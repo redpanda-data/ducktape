@@ -322,12 +322,12 @@ class TestLoader(object):
                             missing_module_pieces = missing_module.split(".")
                             expected_error = (missing_module_pieces == path_pieces[-len(missing_module_pieces):])
 
-                exception_message_with_traceback = ''.join(traceback.format_exception(*exc_info))
                 if expected_error:
                     self.logger.debug(
                         "Failed to import %s. This is likely an artifact of the "
-                        "ducktape module loading process: %s", module_name, exception_message_with_traceback)
+                        "ducktape module loading process: %s: %s", module_name, e.__class__.__name__, e)
                 else:
+                    exception_message_with_traceback = ''.join(traceback.format_exception(*exc_info))
                     self.logger.error(
                         "Failed to import %s, which may indicate a "
                         "broken test that cannot be loaded: %s", module_name, exception_message_with_traceback)
