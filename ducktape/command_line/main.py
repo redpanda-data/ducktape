@@ -210,5 +210,7 @@ def main():
     update_latest_symlink(args_dict["results_root"], session_id)
     close_logger(session_logger)
     if not test_results.get_aggregate_success():
+        if args_dict['allow_test_failures']:
+            sys.exit(0)
         # Non-zero exit if at least one test failed
         sys.exit(1)

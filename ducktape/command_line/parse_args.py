@@ -106,6 +106,9 @@ def create_ducktape_parser():
     parser.add_argument("--allow-empty-tests-list", action="store_true",
                         default=os.environ.get("DUCKTAPE_ALLOW_EMPTY_TESTS_LIST", "0").lower() in ("1", "true", "yes"),
                         help="Proceeds without failing when no tests are loaded ")
+    parser.add_argument("--allow-test-failures", action="store_true",
+                        default=False,
+                        help="Set this to force ducktape to not fail if there were test failures")
     return parser
 
 
