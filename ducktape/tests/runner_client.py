@@ -133,7 +133,7 @@ class RunnerClient(object):
     # configs
     fail_bad_cluster_utilization: bool
     deflake_num: int
-    deflake_exlude_exceptions: List[str]|None
+    deflake_exlude_exceptions: List[str]
 
     def __init__(
         self,
@@ -146,7 +146,7 @@ class RunnerClient(object):
         debug: bool,
         fail_bad_cluster_utilization: bool,
         deflake_num: int,
-        deflake_exlude_exceptions: List[str]|None=None
+        deflake_exlude_exceptions: List[str]=None
     ):
         signal.signal(signal.SIGTERM, self._sigterm_handler)  # register a SIGTERM handler
 
