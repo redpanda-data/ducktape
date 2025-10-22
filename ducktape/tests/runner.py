@@ -260,7 +260,7 @@ class TestRunner(object):
 
                 if self._expect_client_requests:
                     try:
-                        event = self.receiver.recv(timeout=self.session_context.test_runner_timeout)
+                        event = self.receiver.recv(timeout=int(int(self.session_context.test_runner_timeout) * 1.2)) # test_runner_timeout is handled in the client. adding 20% seconds on top, to guard against client not being able to report to the server
                         self._handle(event)
                     except Exception as e:
                         err_str = "Exception receiving message: %s: %s, active_tests: \n %s \n" % (str(type(e)), str(e), self.active_tests_debug())
@@ -303,6 +303,10 @@ class TestRunner(object):
         self.active_tests[test_key] = True
         self.test_schedule_log.append(test_key)
 
+        test_runner_timeout = self.session_context.test_runner_timeout
+        if test_runner_timeout is None:
+            test_runner_timeout = 1800000
+
         proc = multiprocessing.Process(
             target=run_client,
             args=[
@@ -315,7 +319,8 @@ class TestRunner(object):
                 self.session_context.debug,
                 self.session_context.fail_bad_cluster_utilization,
                 self.deflake_num,
-                self.deflake_exclude_exceptions
+                test_runner_timeout,
+                self.deflake_exclude_exceptions,
             ])
 
         self._client_procs[test_key] = proc

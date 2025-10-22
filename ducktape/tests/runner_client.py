@@ -113,6 +113,11 @@ class Sender(object):
         self.poller.unregister(self.socket)
 
 
+class TestTimeoutError(BaseException):
+    """Raised when a test fails to complete within the specified timeout period."""
+    pass
+
+
 class RunnerClient(object):
     """Run a single test"""
 
@@ -133,6 +138,7 @@ class RunnerClient(object):
     # configs
     fail_bad_cluster_utilization: bool
     deflake_num: int
+    test_runner_timeout: int
     deflake_exlude_exceptions: List[str]
 
     def __init__(
@@ -146,6 +152,7 @@ class RunnerClient(object):
         debug: bool,
         fail_bad_cluster_utilization: bool,
         deflake_num: int,
+        test_runner_timeout: int,
         deflake_exlude_exceptions: List[str]=None
     ):
         signal.signal(signal.SIGTERM, self._sigterm_handler)  # register a SIGTERM handler
@@ -162,6 +169,7 @@ class RunnerClient(object):
         self.sender = Sender(server_hostname, str(self.runner_port), self.message, self.logger)
 
         self.deflake_num = deflake_num
+        self.test_runner_timeout = test_runner_timeout
         if deflake_exlude_exceptions is None:
             deflake_exlude_exceptions = []
         self.deflake_exlude_exceptions = deflake_exlude_exceptions
@@ -370,7 +378,7 @@ class RunnerClient(object):
 
             # Run the test unit
             self.setup_test()
-            data = self.run_test()
+            data = self.run_test(self.test_runner_timeout)
             test_status = PASS
 
         except BaseException as e:
@@ -423,14 +431,31 @@ class RunnerClient(object):
         self.log(logging.INFO, "Setting up...")
         self.test.setup()
 
-    def run_test(self):
+    def run_test(self, test_runner_timeout):
         """Run the test!
 
         We expect test_context.function to be a function or unbound method which takes an
         instantiated test object as its argument.
         """
+        timeout_seconds = int(test_runner_timeout / 1000)
+
+        def _handle_timeout(signum, frame):
+            self.log(logging.WARN, f"Test execution exceeded the configured timeout limit '{timeout_seconds} sec'.")
+            raise TestTimeoutError(f"Test timed out after {timeout_seconds} seconds")
+
         self.log(logging.INFO, "Running...")
-        return self.test_context.function(self.test)
+
+        # Set up signal alarm
+        signal.signal(signal.SIGALRM, _handle_timeout)
+        signal.alarm(timeout_seconds)
+
+        try:
+            return self.test_context.function(self.test)
+        except TestTimeoutError as e:
+            self.log(logging.WARN, self._exc_msg(e))
+            raise
+        finally:
+            signal.alarm(0)  # cancel alarm
 
     def _exc_msg(self, e):
         return repr(e) + "\n" + traceback.format_exc(limit=16)
