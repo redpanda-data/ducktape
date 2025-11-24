@@ -373,7 +373,7 @@ class RemoteAccount(HttpMixin):
         return SSHOutputIter(output_generator, stdout)
 
     @check_ssh
-    def ssh_output(self, cmd, allow_fail=False, combine_stderr=True, timeout_sec=None):
+    def ssh_output(self, cmd, allow_fail=False, combine_stderr=True, timeout_sec=None, log_output=True):
         """Runs the command via SSH and captures the output, returning it as a string.
 
         :param cmd: The remote ssh command.
@@ -412,7 +412,8 @@ class RemoteAccount(HttpMixin):
             stdin.close()
             stdout.close()
             stderr.close()
-        self._log(logging.DEBUG, "Returning ssh command output:\n%s" % stdoutdata)
+        if log_output:
+            self._log(logging.DEBUG, "Returning ssh command output:\n%s" % stdoutdata)
         return stdoutdata
 
     def alive(self, pid):
