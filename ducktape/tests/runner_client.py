@@ -253,6 +253,7 @@ class RunnerClient(object):
 
         summaries = []
         num_runs = 0
+        internal_exception = None
 
         try:
             while test_status == FAIL and num_runs < self.deflake_num:
@@ -281,10 +282,15 @@ class RunnerClient(object):
                         self.log(logging.INFO, "exception matches deflake exclude exceptions. stopping deflake retries...")
                         stopped_deflake = True
                         break
-
+        except BaseException as e:
+            try:
+                internal_exception = str(e)
+            except Exception:
+                internal_exception = "unknown internal exception"
+            raise
         finally:
             stop_time = time.time()
-            summary = self.process_run_summaries(summaries, test_status, stopped_deflake)
+            summary = self.process_run_summaries(summaries, test_status, stopped_deflake, internal_exception)
             test_status, summary = self._check_cluster_utilization(test_status, summary)
             # convert summary from list to string
             summary = "\n".join(summary)
@@ -316,11 +322,17 @@ class RunnerClient(object):
             self.test_context = None
             self.test = None
 
-    def process_run_summaries(self, run_summaries: List[List[str]], test_status: TestStatus, stopped_deflake = False) -> List[str]:
+    def process_run_summaries(self, run_summaries: List[List[str]], test_status: TestStatus, stopped_deflake = False, internal_exception: str | None = None) -> List[str]:
         """
         Converts individual run summaries (there may be multiple if deflake is enabled)
         into a single run summary
         """
+
+        # internal exception case, i.e., runner_client threw in its own logic
+        # before/while/after running the test test, so return that
+        if internal_exception is not None:
+            return [f"INTERNAL EXCEPTION: {internal_exception}"]
+
         # no summary case, return test passed
         if not run_summaries:
             return ["Test Passed"]
