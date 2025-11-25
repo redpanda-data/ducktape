@@ -149,7 +149,7 @@ class TestRunner(object):
             # Note: This can lead to some tmp files being uncleaned, otherwise nothing else should be executed by the
             #       client after this point.
             self._log(logging.ERROR,
-                      f"after waiting {timeout}s, process {process.name} failed to complete.  Terminating...")
+                      f"after waiting {timeout}s, process {process.name} failed to complete (for test: {process_key}).  Terminating...")
             self._terminate_process(process)
             self.client_report[process_key]["status"] = "TERMINATED"
         process.join()
