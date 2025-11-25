@@ -267,7 +267,7 @@ class RunnerClient(object):
 
                 # dump threads after the test is complete;
                 # if any thread is not terminated correctly by the test we'll see it here
-                self.dump_threads(f"Threads after {self.test_id} finished")
+                self.dump_threads(f"Threads after {self.test_id} finished (any non-daemon threads may hang!)")
 
                 # if run passed, and not on the first run, the test is flaky
                 if test_status == PASS and num_runs > 1:
@@ -520,5 +520,5 @@ class RunnerClient(object):
         self.send(self.message.log(msg, level=log_level))
 
     def dump_threads(self, msg):
-        dump = '\n'.join([t.name for t in threading.enumerate()])
-        self.log(logging.DEBUG, f"{msg}: {dump}")
+        dump = '\n'.join([f"{t.name}: {t}" for t in threading.enumerate()])
+        self.log(logging.DEBUG, f"{msg}:\n{dump}")
