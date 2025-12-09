@@ -39,6 +39,10 @@ from ducktape.errors import TimeoutError
 
 DEFAULT_MP_JOIN_TIMEOUT = 30
 
+# Used in a log line to indicate issues are are potentially "corrupting" in the sense
+# that they may cause tests that have nothing to do with the original issue to fail.
+# After such an issues occurs, later test results should be treated with suspicion.
+CORRUPTING_FAILURE_TAG = "CORRUPTING_FAILURE"
 
 class Receiver(object):
     def __init__(self, min_port, max_port):
@@ -149,7 +153,8 @@ class TestRunner(object):
             # Note: This can lead to some tmp files being uncleaned, otherwise nothing else should be executed by the
             #       client after this point.
             self._log(logging.ERROR,
-                      f"after waiting {timeout}s, process {process.name} failed to complete.  Terminating...")
+                      f"{CORRUPTING_FAILURE_TAG} after waiting {timeout}s, process {process.name} failed "
+                      f"to complete (for test: {process_key}).  Terminating...")
             self._terminate_process(process)
             self.client_report[process_key]["status"] = "TERMINATED"
         process.join()
