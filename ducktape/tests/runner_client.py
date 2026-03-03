@@ -43,7 +43,10 @@ def run_client(*args, **kwargs):
 
 
 class Sender(object):
-    REQUEST_TIMEOUT_MS = 3000
+    # Must be greater than DEFAULT_MP_JOIN_TIMEOUT (30s) in runner.py,
+    # since the driver blocks on _join_test_process during FINISHED handling
+    # and non-FINISHED events are not idempotent (can't safely retry).
+    REQUEST_TIMEOUT_MS = 35000
     NUM_RETRIES = 5
 
     serde: SerDe

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import namedtuple, defaultdict
+from collections import namedtuple, defaultdict, deque
 import copy
 import logging
 import multiprocessing
@@ -38,11 +38,13 @@ from ducktape.utils import persistence
 from ducktape.errors import TimeoutError
 
 DEFAULT_MP_JOIN_TIMEOUT = 30
+SLOW_EVENT_THRESHOLD_S = 5
 
 # Used in a log line to indicate issues are are potentially "corrupting" in the sense
 # that they may cause tests that have nothing to do with the original issue to fail.
 # After such an issues occurs, later test results should be treated with suspicion.
 CORRUPTING_FAILURE_TAG = "CORRUPTING_FAILURE"
+FATAL_ERROR_TAG = "FATAL_ERROR"
 
 class Receiver(object):
     def __init__(self, min_port, max_port):
@@ -131,6 +133,7 @@ class TestRunner(object):
         self._client_procs = {}  # track client processes running tests
         self.active_tests = {}
         self.finished_tests = {}
+        self._recent_messages = deque(maxlen=100)
         self.test_schedule_log = []
         self.finish_join_timeout = finish_join_timeout
 
@@ -266,10 +269,22 @@ class TestRunner(object):
                 if self._expect_client_requests:
                     try:
                         event = self.receiver.recv(timeout=int(int(self.session_context.test_runner_timeout) * 1.2)) # test_runner_timeout is handled in the client. adding 20% seconds on top, to guard against client not being able to report to the server
-                        self._handle(event)
+                        handle_start = time.time()
+                        try:
+                            self._handle(event)
+                        finally:
+                            handle_elapsed = time.time() - handle_start
+                            if handle_elapsed > SLOW_EVENT_THRESHOLD_S:
+                                self._log(logging.WARNING,
+                                          f"Event processing took {handle_elapsed:.1f}s for "
+                                          f"event_type={event.get('event_type')}, "
+                                          f"test_id={event.get('test_id')}, test_index={event.get('test_index')}")
                     except Exception as e:
-                        err_str = "Exception receiving message: %s: %s, active_tests: \n %s \n" % (str(type(e)), str(e), self.active_tests_debug())
+                        err_str = "%s Exception receiving message: %s: %s, active_tests: \n %s \n" % (FATAL_ERROR_TAG, str(type(e)), str(e), self.active_tests_debug())
                         err_str += "\n" + traceback.format_exc(limit=16)
+                        err_str += "\nRecent messages:\n"
+                        for msg in self._recent_messages:
+                            err_str += f"  {msg}\n"
                         self._log(logging.ERROR, err_str)
 
                         # All processes are on the same machine, so treat communication failure as a fatal error
@@ -353,6 +368,12 @@ class TestRunner(object):
         self._test_cluster[TestKey(test_context.test_id, self.test_counter)] = FiniteSubcluster(allocated)
 
     def _handle(self, event):
+        self._recent_messages.append({
+            "test_key": TestKey(event.get("test_id"), event.get("test_index")),
+            "event_type": event.get("event_type"),
+            "event_id": event.get("event_id"),
+            "message_id": event.get("message_id"),
+        })
         self._log(logging.DEBUG, str(event))
 
         if event["event_type"] == ClientEventFactory.READY:
@@ -382,6 +403,18 @@ class TestRunner(object):
     def _handle_finished(self, event):
         test_key = TestKey(event["test_id"], event["test_index"])
         self.receiver.send(self.event_response.finished(event))
+
+        if test_key not in self.active_tests:
+            if test_key in self.finished_tests:
+                elapsed = time.time() - self.finished_tests[test_key]["event_time"]
+                detail = f"already FINISHED {elapsed:.1f}s ago"
+            else:
+                detail = "never seen before"
+            self._log(logging.WARNING,
+                      f"{CORRUPTING_FAILURE_TAG} received FINISHED for {test_key} not in active_tests "
+                      f"({detail}, event_id={event.get('event_id')}, "
+                      f"message_id={event.get('message_id')}). Ignoring.")
+            return
 
         result = event['result']
         if result.test_status == FAIL and self.exit_first:
