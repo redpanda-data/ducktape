@@ -62,13 +62,15 @@ class Sender(object):
         server_host: str,
         server_port: int,
         message_supplier: ClientEventFactory,
-        logger: logging.Logger
+        logger: logging.Logger,
+        request_timeout_ms: int = None,
     ):
         self.serde = SerDe()
         self.server_endpoint = "tcp://%s:%s" % (str(server_host), str(server_port))
         self.zmq_context = zmq.Context()
         self.socket = None
         self.poller = zmq.Poller()
+        self.request_timeout_ms = request_timeout_ms if request_timeout_ms is not None else self.REQUEST_TIMEOUT_MS
 
         self.message_supplier = message_supplier
         self.logger = logger
@@ -91,7 +93,7 @@ class Sender(object):
             waiting_for_reply = True
 
             while waiting_for_reply:
-                sockets = dict(self.poller.poll(Sender.REQUEST_TIMEOUT_MS))
+                sockets = dict(self.poller.poll(self.request_timeout_ms))
 
                 if sockets.get(self.socket) == zmq.POLLIN:
                     reply = self.socket.recv()
