@@ -415,7 +415,7 @@ class CheckRunner(object):
         session_context = tests.ducktape_mock.session_context()
         test_context = tests.ducktape_mock.test_context(session_context=session_context)
         rc = RunnerClient(
-            "localhost", 22, test_context.test_id, 0, "dummy", "/tmp/dummy", True, False, 5
+            "localhost", 22, test_context.test_id, 0, "dummy", "/tmp/dummy", True, False, 5, 1800000
         )
         rc.sender = MockSender()
         rc.cluster = mock_cluster
