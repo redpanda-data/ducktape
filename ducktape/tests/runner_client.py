@@ -43,7 +43,10 @@ def run_client(*args, **kwargs):
 
 
 class Sender(object):
-    REQUEST_TIMEOUT_MS = 3000
+    # Must be greater than DEFAULT_MP_JOIN_TIMEOUT (30s) in runner.py,
+    # since the driver blocks on _join_test_process during FINISHED handling
+    # and non-FINISHED events are not idempotent (can't safely retry).
+    REQUEST_TIMEOUT_MS = 35000
     NUM_RETRIES = 5
 
     serde: SerDe
@@ -59,13 +62,15 @@ class Sender(object):
         server_host: str,
         server_port: int,
         message_supplier: ClientEventFactory,
-        logger: logging.Logger
+        logger: logging.Logger,
+        request_timeout_ms: int = None,
     ):
         self.serde = SerDe()
         self.server_endpoint = "tcp://%s:%s" % (str(server_host), str(server_port))
         self.zmq_context = zmq.Context()
         self.socket = None
         self.poller = zmq.Poller()
+        self.request_timeout_ms = request_timeout_ms if request_timeout_ms is not None else self.REQUEST_TIMEOUT_MS
 
         self.message_supplier = message_supplier
         self.logger = logger
@@ -88,7 +93,7 @@ class Sender(object):
             waiting_for_reply = True
 
             while waiting_for_reply:
-                sockets = dict(self.poller.poll(Sender.REQUEST_TIMEOUT_MS))
+                sockets = dict(self.poller.poll(self.request_timeout_ms))
 
                 if sockets.get(self.socket) == zmq.POLLIN:
                     reply = self.socket.recv()
