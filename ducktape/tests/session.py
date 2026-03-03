@@ -21,6 +21,9 @@ from ducktape.tests.loggermaker import LoggerMaker
 from ducktape.command_line.defaults import ConsoleDefaults
 
 
+DEFAULT_TEST_RUNNER_TIMEOUT_MS = 1800000  # 30 minutes
+
+
 class SessionContext(object):
     """Wrapper class for 'global' variables. A call to ducktape generates a single shared SessionContext object
     which helps route logging and reporting, etc.
@@ -39,7 +42,7 @@ class SessionContext(object):
         self.default_expected_num_nodes = kwargs.get("default_num_nodes", None)
         self.fail_bad_cluster_utilization = kwargs.get("fail_bad_cluster_utilization")
         self.fail_greedy_tests = kwargs.get("fail_greedy_tests", False)
-        self.test_runner_timeout = kwargs.get("test_runner_timeout")
+        self.test_runner_timeout = kwargs.get("test_runner_timeout", DEFAULT_TEST_RUNNER_TIMEOUT_MS)
         self._globals = kwargs.get("globals")
 
     @property
