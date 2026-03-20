@@ -18,6 +18,7 @@ import logging
 import multiprocessing
 import os
 import signal
+import sys
 import time
 import traceback
 import zmq
@@ -271,6 +272,23 @@ class TestRunner(object):
                         err_str = "Exception receiving message: %s: %s, active_tests: \n %s \n" % (str(type(e)), str(e), self.active_tests_debug())
                         err_str += "\n" + traceback.format_exc(limit=16)
                         self._log(logging.ERROR, err_str)
+
+                        # Request stack traces from child processes before killing them.
+                        # Multiple samples help distinguish livelock from deadlock.
+                        max_workers = 3
+                        samples = 3
+                        procs_to_sample = list(self._client_procs.values())[:max_workers]
+                        self._log(logging.ERROR, "Requesting stack dumps from %d of %d worker(s)" %
+                                  (len(procs_to_sample), len(self._client_procs)))
+                        for proc in procs_to_sample:
+                            print("--- stack dump for worker pid %d ---" % proc.pid, file=sys.stderr, flush=True)
+                            for _ in range(samples):
+                                if proc.is_alive():
+                                    try:
+                                        os.kill(proc.pid, signal.SIGUSR1)
+                                    except OSError:
+                                        pass
+                                time.sleep(0.005)
 
                         # All processes are on the same machine, so treat communication failure as a fatal error
                         for proc in self._client_procs.values():
