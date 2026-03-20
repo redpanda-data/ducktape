@@ -44,6 +44,7 @@ DEFAULT_MP_JOIN_TIMEOUT = 30
 # After such an issues occurs, later test results should be treated with suspicion.
 CORRUPTING_FAILURE_TAG = "CORRUPTING_FAILURE"
 
+
 class Receiver(object):
     def __init__(self, min_port, max_port):
         assert min_port <= max_port, "Expected min_port <= max_port, but instead: min_port: %s, max_port %s" % \
@@ -265,10 +266,14 @@ class TestRunner(object):
 
                 if self._expect_client_requests:
                     try:
-                        event = self.receiver.recv(timeout=int(int(self.session_context.test_runner_timeout) * 1.2)) # test_runner_timeout is handled in the client. adding 20% seconds on top, to guard against client not being able to report to the server
+                        # test_runner_timeout is handled in the client;
+                        # adding 20% on top to guard against client not being able to report to the server
+                        timeout = int(int(self.session_context.test_runner_timeout) * 1.2)
+                        event = self.receiver.recv(timeout=timeout)
                         self._handle(event)
                     except Exception as e:
-                        err_str = "Exception receiving message: %s: %s, active_tests: \n %s \n" % (str(type(e)), str(e), self.active_tests_debug())
+                        err_str = "Exception receiving message: %s: %s, active_tests: \n %s \n" % (
+                            str(type(e)), str(e), self.active_tests_debug())
                         err_str += "\n" + traceback.format_exc(limit=16)
                         self._log(logging.ERROR, err_str)
 
@@ -334,7 +339,6 @@ class TestRunner(object):
         self.client_report[test_key]["pid"] = proc.pid
         self.client_report[test_key]["name"] = proc.name
         self.client_report[test_key]["runner_start_time"] = time.time()
-
 
     def _preallocate_subcluster(self, test_context):
         """Preallocate the subcluster which will be used to run the test.

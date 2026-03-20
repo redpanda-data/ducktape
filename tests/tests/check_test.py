@@ -94,7 +94,9 @@ class CheckDescription(object):
         """If the function has a docstring, the description should come from the function"""
         context = TestContext(session_context=ducktape_mock.session_context(),
                               cls=DummyTest, function=DummyTest.test_multiline_function_description)
-        assert context.description == "function description\nwith multiple lines, including\nleading and trailing whitespace"
+        assert context.description == (
+            "function description\nwith multiple lines, including\n"
+            "leading and trailing whitespace")
 
     def check_from_class(self):
         """If the test method has no docstring, description should come from the class docstring"""
