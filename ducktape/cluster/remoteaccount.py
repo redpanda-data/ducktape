@@ -12,17 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import paramiko
-# Constant that is responsible for updating ssh session keys after
-# more than REKEY_BYTES data passed through the connection
-# Changing it due to https://github.com/redpanda-data/redpanda/issues/6792
-paramiko.packet.Packetizer.REKEY_BYTES = pow(2, 32) # noqa
-
 from contextlib import contextmanager
 import logging
 import os
-from paramiko import SSHClient, SSHConfig, MissingHostKeyPolicy
-from paramiko.ssh_exception import SSHException, NoValidConnectionsError
 import shutil
 import signal
 import socket
@@ -30,9 +22,18 @@ import stat
 import tempfile
 import warnings
 
+import paramiko
+from paramiko import SSHClient, SSHConfig, MissingHostKeyPolicy
+from paramiko.ssh_exception import SSHException, NoValidConnectionsError
+
 from ducktape.utils.http_utils import HttpMixin
 from ducktape.utils.util import wait_until
 from ducktape.errors import DucktapeError
+
+# Constant that is responsible for updating ssh session keys after
+# more than REKEY_BYTES data passed through the connection
+# Changing it due to https://github.com/redpanda-data/redpanda/issues/6792
+paramiko.packet.Packetizer.REKEY_BYTES = pow(2, 32)
 
 
 def check_ssh(method):
@@ -190,12 +191,13 @@ class RemoteAccount(HttpMixin):
         client = SSHClient()
         client.set_missing_host_key_policy(IgnoreMissingHostKeyPolicy())
 
-        try:
-            ip = socket.gethostbyname(self.externally_routable_ip)
-        except socket.gaierror as e:
-            ip = None
-            self._log(logging.WARN,
-                      f"error resolving {self.externally_routable_ip}: {e}")
+        ip = None
+        if self.externally_routable_ip:
+            try:
+                ip = socket.gethostbyname(self.externally_routable_ip)
+            except socket.gaierror as e:
+                self._log(logging.WARN,
+                          f"error resolving {self.externally_routable_ip}: {e}")
 
         self._log(logging.DEBUG,
                   f"ssh_config: {self.ssh_config}, external IP: {ip}")
@@ -644,7 +646,7 @@ class RemoteAccount(HttpMixin):
         # TODO: what happens if the base part of the path does not exist?
         node_reachable = False
         disk_space = "Unknown"
-        
+
         try:
             self._log(logging.DEBUG,
                       f"Let's create or overwrite file at: {path}")
@@ -670,13 +672,13 @@ class RemoteAccount(HttpMixin):
                         except Exception as disk_error:
                             self._log(logging.ERROR, f"Failed to retrieve disk space: {disk_error}")
                     else:
-                        self._log(logging.ERROR, f"Remote directory does not exist: {dir_path}")            
+                        self._log(logging.ERROR, f"Remote directory does not exist: {dir_path}")
                 else:
                     self._log(logging.ERROR, "No parent directory to validate")
-                
+
             except Exception as debug_error:
                 self._log(logging.ERROR, f"Debugging failed: {debug_error}")
-                    
+
             raise Exception(
                 f"Node reachable={node_reachable}"
                 f"Available disk space: {disk_space} bytes"

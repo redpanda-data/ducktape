@@ -156,7 +156,7 @@ class RunnerClient(object):
         fail_bad_cluster_utilization: bool,
         deflake_num: int,
         test_runner_timeout: int,
-        deflake_exlude_exceptions: List[str]=None
+        deflake_exlude_exceptions: List[str] = None
     ):
         signal.signal(signal.SIGTERM, self._sigterm_handler)  # register a SIGTERM handler
 
@@ -282,7 +282,8 @@ class RunnerClient(object):
                 self.log(logging.INFO, msg)
                 if test_status == FAIL and run_summary:
                     if self.deflake_enabled and self.stop_deflake_retries("\n".join(run_summary)):
-                        self.log(logging.INFO, "exception matches deflake exclude exceptions. stopping deflake retries...")
+                        self.log(logging.INFO,
+                                 "exception matches deflake exclude exceptions. stopping deflake retries...")
                         stopped_deflake = True
                         break
         except BaseException as e:
@@ -325,7 +326,10 @@ class RunnerClient(object):
             self.test_context = None
             self.test = None
 
-    def process_run_summaries(self, run_summaries: List[List[str]], test_status: TestStatus, stopped_deflake = False, internal_exception: str | None = None) -> List[str]:
+    def process_run_summaries(
+            self, run_summaries: List[List[str]], test_status: TestStatus,
+            stopped_deflake=False,
+            internal_exception: str | None = None) -> List[str]:
         """
         Converts individual run summaries (there may be multiple if deflake is enabled)
         into a single run summary

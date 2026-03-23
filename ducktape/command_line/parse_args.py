@@ -215,5 +215,6 @@ def parse_args(args):
         sys.exit(0)
     # make list of deflake exclude exceptions
     if parsed_args_dict["deflake_exclude_exceptions"]:
-        parsed_args_dict["deflake_exclude_exceptions"] = [d for d in str(parsed_args_dict["deflake_exclude_exceptions"]).split(",") if d]
+        parsed_args_dict["deflake_exclude_exceptions"] = [
+            d for d in str(parsed_args_dict["deflake_exclude_exceptions"]).split(",") if d]
     return parsed_args_dict
