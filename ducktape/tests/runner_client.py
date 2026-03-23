@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections import defaultdict
+import faulthandler
 import logging
 import os
 import signal
@@ -37,6 +38,8 @@ from ducktape.utils.local_filesystem_utils import mkdir_p
 
 
 def run_client(*args, **kwargs):
+    # On timeout, the runner sends SIGUSR1 to dump all thread stacks to stderr
+    faulthandler.register(signal.SIGUSR1)
     client = RunnerClient(*args, **kwargs)
     client.ready()
     client.run()

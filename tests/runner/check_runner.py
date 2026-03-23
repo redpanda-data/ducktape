@@ -36,6 +36,7 @@ from ducktape.errors import TimeoutError
 
 from unittest.mock import Mock, MagicMock
 import os
+import signal
 import xml.etree.ElementTree as ET
 
 from .resources.test_various_num_nodes import VariousNumNodesTest
@@ -266,6 +267,25 @@ class CheckRunner(object):
             runner.run_all_tests()
 
         assert not runner._client_procs
+
+    def check_runner_timeout_requests_stack_dumps(self, capfd):
+        """Check that SIGUSR1 is sent to child processes on timeout."""
+        mock_cluster = LocalhostCluster(num_nodes=1000)
+        session_context = tests.ducktape_mock.session_context(max_parallel=1000, test_runner_timeout=1)
+
+        test_methods = [TestThingy.test_delayed]
+        ctx_list = self._do_expand(test_file=TEST_THINGY_FILE, test_class=TestThingy, test_methods=test_methods,
+                                   cluster=mock_cluster, session_context=session_context)
+        runner = TestRunner(mock_cluster, session_context, Mock(), ctx_list, 1)
+
+        with pytest.raises(TimeoutError), patch('os.kill', wraps=os.kill) as mock_kill:
+            runner.run_all_tests()
+
+        usr1_calls = [c for c in mock_kill.call_args_list if c.args[1] == signal.SIGUSR1]
+        assert len(usr1_calls) > 1
+
+        captured = capfd.readouterr()
+        assert "Current thread" in captured.err
 
     @pytest.mark.parametrize('fail_greedy_tests', [True, False])
     def check_fail_greedy_tests(self, fail_greedy_tests):
