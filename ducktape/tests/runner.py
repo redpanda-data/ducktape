@@ -291,8 +291,21 @@ class TestRunner(object):
                                 if proc.is_alive():
                                     try:
                                         os.kill(proc.pid, signal.SIGUSR1)
-                                    except OSError:
-                                        pass
+                                    except OSError as e:
+                                        self._log(logging.ERROR,
+                                                  "Failed to send SIGUSR1 to pid %d: %s" %
+                                                  (proc.pid, e))
+                                        continue
+                                else:
+                                    exitcode = proc.exitcode
+                                    if exitcode is not None and exitcode < 0:
+                                        reason = "killed by %s" % signal.Signals(-exitcode).name
+                                    else:
+                                        reason = "exitcode=%s" % exitcode
+                                    self._log(logging.ERROR,
+                                              "Worker pid %d already dead (%s)" %
+                                              (proc.pid, reason))
+                                    break
                                 time.sleep(0.005)
 
                         # All processes are on the same machine, so treat communication failure as a fatal error
