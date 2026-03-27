@@ -287,6 +287,28 @@ class CheckRunner(object):
         captured = capfd.readouterr()
         assert "Current thread" in captured.err
 
+    @pytest.mark.parametrize('crash,expected_reason', [
+        (lambda: os._exit(1), "exitcode=1"),
+        (lambda: os.kill(os.getpid(), signal.SIGKILL), "killed by SIGKILL"),
+    ])
+    def check_runner_timeout_dead_worker(self, crash, expected_reason):
+        """Check that dead workers are reported when requesting stack dumps."""
+        mock_cluster = LocalhostCluster(num_nodes=1000)
+        session_context = tests.ducktape_mock.session_context(max_parallel=1000, test_runner_timeout=1)
+
+        test_methods = [TestThingy.test_delayed]
+        ctx_list = self._do_expand(test_file=TEST_THINGY_FILE, test_class=TestThingy, test_methods=test_methods,
+                                   cluster=mock_cluster, session_context=session_context)
+        mock_logger = Mock()
+        runner = TestRunner(mock_cluster, session_context, mock_logger, ctx_list, 1)
+
+        with pytest.raises(TimeoutError), \
+                patch('ducktape.tests.runner.run_client', lambda *a, **kw: crash()):
+            runner.run_all_tests()
+
+        log_messages = [str(c) for c in mock_logger.log.call_args_list]
+        assert any("already dead" in msg and expected_reason in msg for msg in log_messages)
+
     @pytest.mark.parametrize('fail_greedy_tests', [True, False])
     def check_fail_greedy_tests(self, fail_greedy_tests):
         mock_cluster = LocalhostCluster(num_nodes=1000)
