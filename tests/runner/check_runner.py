@@ -191,6 +191,24 @@ class CheckRunner(object):
         result = [r for r in results][0]
         assert "failed to clean service" in result.summary
 
+    def check_service_clean_failure_stops_the_run(self):
+        """A failed service clean-up must stop the whole run even without exit_first, since the
+        leaked resources it leaves behind can poison any test scheduled after it. Note this is
+        stricter than exit_first, which other tests confirm doesn't stop the run when disabled.
+        """
+        mock_cluster = LocalhostCluster(num_nodes=1000)
+        session_context = tests.ducktape_mock.session_context()
+        assert not session_context.exit_first
+
+        ctx_list = self._do_expand(test_file=UNCLEAN_TEARDOWN_TEST_FILE, test_class=UncleanTeardownTest,
+                                   test_methods=[UncleanTeardownTest.test_body_passes],
+                                   cluster=mock_cluster, session_context=session_context)
+        runner = TestRunner(mock_cluster, session_context, Mock(), ctx_list, 1)
+        results = runner.run_all_tests()
+        assert len(ctx_list) > 1
+        assert len(results) == 1
+        assert results.num_failed == 1
+
     def check_exits_if_failed_to_initialize(self):
         """Validate that runner exits correctly when tests failed to initialize.
         """

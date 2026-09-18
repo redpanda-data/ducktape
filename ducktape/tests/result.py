@@ -35,12 +35,14 @@ class TestResult(object):
                  summary="",
                  data=None,
                  start_time=-1,
-                 stop_time=-1):
+                 stop_time=-1,
+                 unclean_teardown=False):
         """
         @param test_context  standard test context object
         @param test_status   did the test pass or fail, etc?
         @param summary       summary information
         @param data          data returned by the test, e.g. throughput
+        @param unclean_teardown  service clean-up failed, so the test's nodes may hold leaked resources
         """
         self.nodes_allocated = len(test_context.cluster)
         self.nodes_used = test_context.cluster.max_used_nodes
@@ -76,6 +78,8 @@ class TestResult(object):
         # For tracking run time
         self.start_time = start_time
         self.stop_time = stop_time
+
+        self.unclean_teardown = unclean_teardown
 
     def __repr__(self):
         return "<%s - test_status:%s, data:%s>" % (self.__class__.__name__, self.test_status, str(self.data))
