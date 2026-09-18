@@ -39,6 +39,7 @@ import os
 import xml.etree.ElementTree as ET
 
 from .resources.test_various_num_nodes import VariousNumNodesTest
+from .resources.test_unclean_teardown import UncleanTeardownTest
 
 TEST_THINGY_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "resources/test_thingy.py"))
@@ -52,6 +53,8 @@ VARIOUS_NUM_NODES_TEST_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "resources/test_various_num_nodes.py"))
 BAD_ACTOR_TEST_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "resources/test_bad_actor.py"))
+UNCLEAN_TEARDOWN_TEST_FILE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "resources/test_unclean_teardown.py"))
 
 
 class CheckRunner(object):
@@ -169,6 +172,24 @@ class CheckRunner(object):
         results = runner.run_all_tests()
         assert len(ctx_list) > 1
         assert len(results) == 1
+
+    def check_service_clean_failure_fails_test(self):
+        """A test whose service fails to clean up must be reported as failed even though the
+        test body passed, since the service may have leaked resources on its nodes.
+        """
+        mock_cluster = LocalhostCluster(num_nodes=1000)
+        session_context = tests.ducktape_mock.session_context()
+
+        ctx_list = self._do_expand(test_file=UNCLEAN_TEARDOWN_TEST_FILE, test_class=UncleanTeardownTest,
+                                   test_methods=[UncleanTeardownTest.test_body_passes],
+                                   cluster=mock_cluster, session_context=session_context)
+        runner = TestRunner(mock_cluster, session_context, Mock(), ctx_list[:1], 1)
+        results = runner.run_all_tests()
+        assert len(results) == 1
+        assert results.num_failed == 1
+        assert results.num_passed == 0
+        result = [r for r in results][0]
+        assert "failed to clean service" in result.summary
 
     def check_exits_if_failed_to_initialize(self):
         """Validate that runner exits correctly when tests failed to initialize.

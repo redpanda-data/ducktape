@@ -369,6 +369,15 @@ class RunnerClient(object):
                 if service_errors:
                     summary.extend(["", "", service_errors])
 
+                # a failed clean means resources may have leaked on the test's nodes, which
+                # can poison unrelated tests that are later allocated those nodes, so it must
+                # fail the test rather than be a warning buried in the logs of a green run
+                if self.test_context.services.clean_errors:
+                    if test_status == PASS:
+                        summary.extend(["", "Test passed but one or more services failed to clean up;"
+                                            " resources may have leaked on its nodes"])
+                    test_status = FAIL
+
             # free nodes
             if self.test:
                 self.log(logging.DEBUG, "Freeing nodes...")

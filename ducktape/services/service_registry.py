@@ -21,6 +21,7 @@ class ServiceRegistry(object):
     def __init__(self):
         self._services = OrderedDict()
         self._nodes = {}
+        self.clean_errors = []
 
     def __contains__(self, item):
         return id(item) in self._services
@@ -56,7 +57,12 @@ class ServiceRegistry(object):
             raise keyboard_interrupt
 
     def clean_all(self):
-        """Clean all services. This should only be called after services are stopped."""
+        """Clean all services. This should only be called after services are stopped.
+
+        A service whose clean fails may have leaked processes or persistent state on its
+        nodes, so the failure is recorded in ``clean_errors`` (and on ``service.error``)
+        for the test runner to act on, rather than only being logged.
+        """
         keyboard_interrupt = None
         for service in self._services.values():
             try:
@@ -65,6 +71,8 @@ class ServiceRegistry(object):
                 if isinstance(e, KeyboardInterrupt):
                     keyboard_interrupt = e
                 service.logger.warn("Error cleaning service %s: %s" % (service, e))
+                service.error = "failed to clean service, resources may have leaked on its nodes: %s" % repr(e)
+                self.clean_errors.append("%s: %s" % (service.who_am_i(), repr(e)))
 
         if keyboard_interrupt is not None:
             raise keyboard_interrupt
@@ -84,6 +92,9 @@ class ServiceRegistry(object):
             raise keyboard_interrupt
         self._services.clear()
         self._nodes.clear()
+        # the registry is reused across deflake runs of the same test context, so
+        # clean failures must not carry over into the next run's teardown
+        self.clean_errors = []
 
     def errors(self):
         """
