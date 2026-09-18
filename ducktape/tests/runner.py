@@ -367,7 +367,15 @@ class TestRunner(object):
         self.receiver.send(self.event_response.finished(event))
 
         result = event['result']
-        if result.test_status == FAIL and self.exit_first:
+        if getattr(result, "unclean_teardown", False):
+            # the failed clean-up may have leaked resources onto nodes that later tests
+            # would be allocated, so their results can't be trusted; stop scheduling
+            # new tests regardless of exit_first
+            self._log(logging.ERROR,
+                      "Test %s failed to clean up its services; stopping the run since its cluster "
+                      "nodes may hold leaked resources that would poison subsequent tests" % event["test_id"])
+            self.stop_testing = True
+        elif result.test_status == FAIL and self.exit_first:
             self.stop_testing = True
 
         # Transition this test from running to finished
