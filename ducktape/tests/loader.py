@@ -52,12 +52,20 @@ def discovery_symbol(file_name, cls_name, function_name, injected_args=None):
     """Build the symbol that loads one test. Inverse of _parse_discovery_symbol.
 
     Returns ``<file>::<Class>.<method>``, with ``@<json>`` appended when the test
-    is parametrized.
+    is parametrized. The loader matches parameters by equality against the parsed
+    JSON, so returns None when they do not survive the round trip.
     """
     symbol = "{}::{}.{}".format(file_name, cls_name, function_name)
-    if not injected_args:
+    if injected_args is None:
         return symbol
-    return "{}@{}".format(symbol, json.dumps(injected_args, separators=(',', ':')))
+    try:
+        # Sorted so a test always yields the same symbol.
+        encoded = json.dumps(injected_args, separators=(',', ':'), sort_keys=True)
+        if json.loads(encoded) != injected_args:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return "{}@{}".format(symbol, encoded)
 
 
 class TestLoader(object):

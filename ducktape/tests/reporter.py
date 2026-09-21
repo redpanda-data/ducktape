@@ -374,6 +374,7 @@ class FailedTestSymbolReporter(SummaryReporter):
 
     def report(self):
         symbols = [self.to_symbol(result) for result in self.results if result.test_status == FAIL]
+        symbols = [symbol for symbol in symbols if symbol is not None]
         if not symbols:
             return
 

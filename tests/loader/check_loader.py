@@ -19,6 +19,7 @@ import tests.ducktape_mock
 import os
 import os.path
 import pytest
+from enum import Enum, IntEnum
 import re
 import requests
 import tempfile
@@ -352,10 +353,40 @@ class CheckTestLoader(object):
         for context in collected:
             symbol = discovery_symbol(
                 context.file, context.cls_name, context.function_name, context.injected_args)
+            assert symbol is not None, "no symbol for {}".format(context.test_id)
+
             reloaded = TestLoader(self.SESSION_CONTEXT, logger=Mock()).load([symbol])
             assert [t.test_id for t in reloaded] == [context.test_id], \
                 "symbol {} did not load only {}".format(symbol, context.test_id)
             assert reloaded[0].injected_args == context.injected_args
+
+    def check_discovery_symbol_is_stable(self):
+        assert discovery_symbol('f.py', 'C', 'm', {'y': 2, 'x': 1}) == \
+            discovery_symbol('f.py', 'C', 'm', {'x': 1, 'y': 2})
+
+    def check_discovery_symbol_without_params(self):
+        assert discovery_symbol('f.py', 'C', 'm') == 'f.py::C.m'
+        # {} injects nothing, None is unparametrized. The loader compares by
+        # equality, so they cannot share a symbol.
+        assert discovery_symbol('f.py', 'C', 'm', {}) == 'f.py::C.m@{}'
+
+    def check_discovery_symbol_for_unaddressable_params(self):
+        """No symbol for parameters that JSON cannot round trip."""
+        # Tuple comes back a list, set does not serialize, int key comes back a string.
+        assert discovery_symbol('f.py', 'C', 'm', {'x': (1, 2)}) is None
+        assert discovery_symbol('f.py', 'C', 'm', {'x': {1, 2}}) is None
+        assert discovery_symbol('f.py', 'C', 'm', {'x': {1: 'a'}}) is None
+
+    def check_discovery_symbol_for_enum_params(self):
+        """An IntEnum is an int, so it round trips; a plain Enum does not."""
+        class Backend(IntEnum):
+            S3 = 1
+
+        class Plain(Enum):
+            S3 = 1
+
+        assert discovery_symbol('f.py', 'C', 'm', {'x': Backend.S3}) == 'f.py::C.m@{"x":1}'
+        assert discovery_symbol('f.py', 'C', 'm', {'x': Plain.S3}) is None
 
     def check_test_loader_with_multiple_matrix_params(self):
         loader = TestLoader(self.SESSION_CONTEXT, logger=Mock())
