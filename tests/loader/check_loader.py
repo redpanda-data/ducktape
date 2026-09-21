@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ducktape.tests.loader import TestLoader, LoaderException, _requests_session
+from ducktape.tests.loader import TestLoader, LoaderException, discovery_symbol, _requests_session
 
 import tests.ducktape_mock
 
@@ -338,6 +338,24 @@ class CheckTestLoader(object):
         # end up with a single context
         assert len(tests) == 1
         assert tests[0].injected_args == {'version': '6.1.0', 'chars': '!@#$%^&*()_+::.,/? \"{}\\'}
+
+    def check_discovery_symbol_round_trip(self):
+        """Every symbol must load the test it was built from, and no other.
+
+        Covers the awkward parametrizations in the discovery directory, notably
+        the special characters one.
+        """
+        loader = TestLoader(self.SESSION_CONTEXT, logger=Mock())
+        collected = loader.load([discover_dir()])
+        assert len(collected) == num_tests_in_dir(discover_dir())
+
+        for context in collected:
+            symbol = discovery_symbol(
+                context.file, context.cls_name, context.function_name, context.injected_args)
+            reloaded = TestLoader(self.SESSION_CONTEXT, logger=Mock()).load([symbol])
+            assert [t.test_id for t in reloaded] == [context.test_id], \
+                "symbol {} did not load only {}".format(symbol, context.test_id)
+            assert reloaded[0].injected_args == context.injected_args
 
     def check_test_loader_with_multiple_matrix_params(self):
         loader = TestLoader(self.SESSION_CONTEXT, logger=Mock())

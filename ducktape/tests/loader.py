@@ -48,6 +48,18 @@ DEFAULT_TEST_FUNCTION_PATTERN = "(^test.*)|(.*test$)"
 _requests_session = requests.session()
 
 
+def discovery_symbol(file_name, cls_name, function_name, injected_args=None):
+    """Build the symbol that loads one test. Inverse of _parse_discovery_symbol.
+
+    Returns ``<file>::<Class>.<method>``, with ``@<json>`` appended when the test
+    is parametrized.
+    """
+    symbol = "{}::{}.{}".format(file_name, cls_name, function_name)
+    if not injected_args:
+        return symbol
+    return "{}@{}".format(symbol, json.dumps(injected_args, separators=(',', ':')))
+
+
 class TestLoader(object):
     """Class used to discover and load tests."""
 

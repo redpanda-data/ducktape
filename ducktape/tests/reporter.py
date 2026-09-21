@@ -25,6 +25,7 @@ import xml.etree.ElementTree as ET
 
 from ducktape.utils.terminal_size import get_terminal_size
 from ducktape.utils.util import ducktape_version
+from ducktape.tests.loader import discovery_symbol
 from ducktape.tests.status import PASS, FAIL, IGNORE, FLAKY
 from ducktape.json_serializable import DucktapeJSONEncoder
 
@@ -353,11 +354,7 @@ class FailedTestSymbolReporter(SummaryReporter):
 
     def to_symbol(self, result):
         p = Path(result.file_name).relative_to(self.working_dir)
-        line = f'{p}::{result.cls_name}.{result.function_name}'
-        if result.injected_args:
-            injected_args_str = json.dumps(result.injected_args, separators=(',', ':'))
-            line += f'@{injected_args_str}'
-        return line
+        return discovery_symbol(p, result.cls_name, result.function_name, result.injected_args)
 
     def dump_test_suite(self, lines):
         print(self.separator)
