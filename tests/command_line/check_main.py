@@ -13,15 +13,19 @@
 # limitations under the License.
 
 from ducktape.command_line.main import get_user_defined_globals
+from ducktape.command_line.main import print_test_symbols
 from ducktape.command_line.main import setup_results_directory
 from ducktape.command_line.main import update_latest_symlink
 
+import io
 import json
 import os
 import os.path
 import pickle
 import pytest
 import tempfile
+
+from mock import Mock
 
 
 class CheckSetupResultsDirectory(object):
@@ -169,3 +173,29 @@ class CheckUserDefinedGlobals(object):
 
         finally:
             os.remove(fname)
+
+
+def collected(test_id, injected_args):
+    return Mock(file='f.py', cls_name='C', function_name='m',
+                test_id=test_id, injected_args=injected_args)
+
+
+class CheckPrintTestSymbols(object):
+    def print(self, tests):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        status = print_test_symbols(tests, stdout, stderr)
+        return status, stdout.getvalue(), stderr.getvalue()
+
+    def check_one_symbol_per_test(self):
+        status, stdout, stderr = self.print([collected('a', {'x': 1}), collected('b', None)])
+        assert status == 0
+        assert stdout == 'f.py::C.m@{"x":1}\nf.py::C.m\n'
+        assert stderr == ''
+
+    def check_fails_without_listing_anything(self):
+        """A short list would look complete, so an unaddressable test fails the run."""
+        status, stdout, stderr = self.print([collected('a', {'x': 1}), collected('b', {'x': (1, 2)})])
+        assert status == 1
+        assert stdout == ''
+        assert 'No symbol for b' in stderr
+        assert 'Cannot address 1 of 2' in stderr

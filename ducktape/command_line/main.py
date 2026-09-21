@@ -23,7 +23,7 @@ import traceback
 
 from ducktape.command_line.defaults import ConsoleDefaults
 from ducktape.command_line.parse_args import parse_args
-from ducktape.tests.loader import TestLoader, LoaderException
+from ducktape.tests.loader import TestLoader, LoaderException, discovery_symbol
 from ducktape.tests.loggermaker import close_logger
 from ducktape.tests.reporter import SimpleStdoutSummaryReporter, SimpleFileSummaryReporter, \
     HTMLSummaryReporter, JSONReporter, JUnitReporter, FailedTestSymbolReporter
@@ -33,6 +33,32 @@ from ducktape.tests.session import generate_session_id, generate_results_dir
 from ducktape.utils.local_filesystem_utils import mkdir_p
 from ducktape.utils import persistence
 from ducktape.utils.util import load_function
+
+
+def print_test_symbols(tests, stdout, stderr):
+    """Print one discovery symbol per test and return an exit status.
+
+    Lists every test or none: a partial list would look complete to anything
+    reading stdout.
+    """
+    symbols = []
+    unaddressable = []
+    for test in tests:
+        symbol = discovery_symbol(test.file, test.cls_name, test.function_name, test.injected_args)
+        if symbol is None:
+            unaddressable.append(test.test_id)
+        else:
+            symbols.append(symbol)
+
+    if unaddressable:
+        for test_id in unaddressable:
+            print("No symbol for %s: parameters do not survive JSON" % test_id, file=stderr)
+        print("Cannot address %d of %d collected tests" % (len(unaddressable), len(tests)), file=stderr)
+        return 1
+
+    for symbol in symbols:
+        print(symbol, file=stdout)
+    return 0
 
 
 def get_user_defined_globals(globals_str):
@@ -137,6 +163,9 @@ def main():
     except LoaderException as e:
         print("Failed while trying to discover tests: {}".format(e))
         sys.exit(1)
+
+    if args_dict["collect_only_symbols"]:
+        sys.exit(print_test_symbols(tests, sys.stdout, sys.stderr))
 
     if args_dict["collect_only"]:
         print("Collected %d tests:" % len(tests))
