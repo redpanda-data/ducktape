@@ -48,6 +48,54 @@ DEFAULT_TEST_FUNCTION_PATTERN = "(^test.*)|(.*test$)"
 _requests_session = requests.session()
 
 
+def _describe_json_violation(injected_args):
+    """Return why injected_args won't survive a JSON round trip, or None.
+
+    Reporters dump with sort_keys. NaN and Infinity aren't JSON. Rerun symbols match arguments by equality.
+    """
+    try:
+        round_tripped = json.loads(json.dumps(injected_args, sort_keys=True, allow_nan=False))
+        if round_tripped != injected_args:
+            return f"{injected_args!r} is read back as {round_tripped!r}"
+    except Exception as e:
+        return f"{type(e).__name__}: {e}"
+
+    return None
+
+
+def _validate_injected_args(contexts):
+    violations = []
+    for context in contexts:
+        reason = _describe_json_violation(context.injected_args)
+        if reason is not None:
+            violations.append(f"{context.test_id} ({context.file}): {reason}")
+
+    if violations:
+        raise LoaderException(
+            "Test arguments must be JSON values: str, int, float, bool, None, and lists or str-keyed dicts of "
+            "them. Pass an enum's name instead of the member, or a list instead of a tuple, and convert inside "
+            "the test:\n  " + "\n  ".join(violations))
+
+
+def _raise_on_colliding_test_ids(contexts):
+    """Test ids encode arguments lossily, so distinct parametrizations can share one.
+
+    repr() tells apart values that compare equal, such as an IntEnum member and its int.
+    """
+    args_by_id = {}
+    for context in contexts:
+        args_by_id.setdefault(context.test_id, set()).add(repr(context.injected_args))
+
+    collisions = [f"{test_id}: {', '.join(sorted(args))}"
+                  for test_id, args in sorted(args_by_id.items()) if len(args) > 1]
+    if collisions:
+        raise LoaderException(
+            "Distinct parametrizations share a test id. Ducktape builds the id from str() of each argument, "
+            "drops whitespace and turns every character but letters, digits, '_', '-' and '=' into '.'. "
+            "Key the values by name instead: CASES = {\"slash\": \"a/b\", \"dot\": \"a.b\"}, "
+            "@matrix(case=list(CASES)), and CASES[case] in the test:\n  " + "\n  ".join(collisions))
+
+
 class TestLoader(object):
     """Class used to discover and load tests."""
 
@@ -146,6 +194,7 @@ class TestLoader(object):
 
         # Sort to make sure we get a consistent order for when we create subsets
         all_test_context_list = sorted(all_test_context_list, key=attrgetter("test_id"))
+        _validate_injected_args(all_test_context_list)
         if not all_test_context_list:
             if not self.allow_empty_tests_list:
                 raise LoaderException("No tests to run!")
@@ -202,6 +251,8 @@ class TestLoader(object):
                 test_context_list = filter(lambda t: t.cls_name == cls_name, test_context_list)
             if len(method_name) > 0:
                 test_context_list = filter(lambda t: t.function_name == method_name, test_context_list)
+            test_context_list = list(test_context_list)
+            _raise_on_colliding_test_ids(test_context_list)
             if injected_args is not None:
                 if isinstance(injected_args, List):
                     def condition(t):

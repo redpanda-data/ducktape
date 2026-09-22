@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ducktape.tests.loader import TestLoader, LoaderException, _requests_session
+from ducktape.tests.loader import TestLoader, LoaderException, _describe_json_violation, _requests_session
 
 import tests.ducktape_mock
 
@@ -657,3 +657,76 @@ class CheckParseSymbol(object):
             )
 
             assert actually_parsed == expected_parsed, "%s did not parse as expected" % symbol
+
+
+def bad_parametrization(name):
+    return os.path.join(resources_dir(), "bad_parametrizations", name)
+
+
+class CheckTestLoaderParametrizationRules(object):
+    """Parametrizations that would break reporting or reruns fail discovery."""
+
+    def loader(self):
+        return TestLoader(tests.ducktape_mock.session_context(), logger=Mock())
+
+    def check_accepts_json_args(self):
+        file_path = bad_parametrization("test_good_args.py")
+        tests_ = self.loader().load([file_path])
+        assert len(tests_) == num_tests_in_file(file_path)
+
+    def check_rejects_unserializable_args(self):
+        with pytest.raises(LoaderException) as e:
+            self.loader().load([bad_parametrization("test_unserializable_args.py")])
+
+        assert "Object of type Flavor is not JSON serializable" in str(e.value)
+        assert "test_enum_arg.flavor=Flavor.VANILLA" in str(e.value)
+
+    @pytest.mark.parametrize(["symbols", "excluded"], [
+        pytest.param([bad_parametrization("test_colliding_ids.py")], None, id="include all"),
+        pytest.param(
+            [bad_parametrization("test_colliding_ids.py") + '::CollidingIdsTest.test_punctuated_arg@{"path": "a.b"}'],
+            None, id="include one"),
+        pytest.param(
+            [bad_parametrization("test_colliding_ids.py")],
+            [bad_parametrization("test_colliding_ids.py") + '::CollidingIdsTest.test_punctuated_arg@{"path": "a/b"}'],
+            id="exclude one"),
+        pytest.param([bad_parametrization("test_suite_colliding_with_exclude.yml")], None, id="suite excludes one"),
+    ])
+    def check_rejects_colliding_test_ids(self, symbols, excluded):
+        """Fails even when a symbol selects or excludes only one of the pair."""
+        with pytest.raises(LoaderException) as e:
+            self.loader().load(symbols, excluded)
+
+        assert "share a test id" in str(e.value)
+        assert "{'path': 'a.b'}" in str(e.value)
+        assert "{'path': 'a/b'}" in str(e.value)
+
+    def check_same_test_discovered_twice_is_not_a_collision(self):
+        file_symbol = bad_parametrization("test_good_args.py")
+        class_symbol = file_symbol + "::GoodArgsTest"
+
+        tests_ = self.loader().load([file_symbol, class_symbol])
+        assert len(tests_) == num_tests_in_file(file_symbol)
+
+
+class _RaisingEq(str):
+    def __eq__(self, other):
+        raise TypeError("cannot compare")
+
+
+class CheckDescribeJsonViolation(object):
+    @pytest.mark.parametrize(["injected_args", "reason_fragment"], [
+        pytest.param({"x": (1, 2)}, "is read back as", id="tuple"),
+        pytest.param({"x": {1, 2}}, "not JSON serializable", id="set"),
+        pytest.param({"x": {1: "a"}}, "is read back as", id="non-string key"),
+        pytest.param({"x": {1: "a", "b": "c"}}, "TypeError", id="unorderable keys"),
+        pytest.param({"x": float("nan")}, "Out of range float", id="nan"),
+        pytest.param({"x": float("inf")}, "Out of range float", id="infinity"),
+        pytest.param({"x": _RaisingEq("v")}, "cannot compare", id="raising eq"),
+    ])
+    def check_rejects(self, injected_args, reason_fragment):
+        reason = _describe_json_violation(injected_args)
+        assert reason is not None and reason_fragment in reason, reason
+
+    def check_accepts_nested_json_values(self):
+        assert _describe_json_violation({"x": [1, {"k": None, "f": 0.5}], "y": True}) is None
