@@ -1,7 +1,7 @@
 from ducktape.mark import matrix, parametrize
 from ducktape.tests.test import Test
 
-NUM_TESTS = 5
+NUM_TESTS = 7
 
 
 class GoodArgsTest(Test):
@@ -11,4 +11,9 @@ class GoodArgsTest(Test):
 
     @matrix(replicas=[1, 3], mode=["async", "sync"])
     def test_matrix_args(self, replicas, mode):
+        pass
+
+    @parametrize()
+    @parametrize(retries=3)
+    def test_empty_args(self, retries=1):
         pass

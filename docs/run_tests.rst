@@ -127,6 +127,21 @@ But running::
 runs only ``test_b.py`` and ``test_c.py`` once, and skips ``test_a.py``.
 
 
+Collecting Tests
+================
+
+``--collect-only`` lists the tests ducktape would run. Add ``--collect-output`` to write the list to a file; a
+``.json`` suffix writes JSON. Each test's ``symbol`` loads only that test, so a script can filter the list and pass
+it back as a test suite, which may be written as JSON since JSON is valid YAML. For example, to run the tests that take a ``cloud_storage_type`` parameter::
+
+    ducktape ./my_tests_dir --collect-only --collect-output collected.json
+    jq '{selected: [.tests[] | select((.injected_args // {}) | has("cloud_storage_type")) | .symbol]}' \
+        collected.json > selected.yml
+    ducktape selected.yml
+
+Parametrizations can depend on the environment, so collect and run in the same one.
+
+
 Options
 =======
 
