@@ -186,7 +186,7 @@ class TestLoader(object):
         all_included = contexts_from_suites.union(contexts_from_symbols)
 
         # excluded_test_symbols apply to both tests from suites and tests from symbols
-        global_excluded = self._load_test_contexts(excluded_test_symbols)
+        global_excluded = self._load_test_contexts(excluded_test_symbols, allow_unmatched_args=True)
         all_test_context_list = self._filter_excluded_test_contexts(all_included, global_excluded)
 
         # make sure no test is loaded twice
@@ -582,7 +582,7 @@ class TestLoader(object):
         included = kwargs['included']
         excluded = kwargs.get('excluded')
         base_dir = kwargs.get('base_dir')
-        excluded_contexts = self._load_test_contexts(excluded, base_dir=base_dir)
+        excluded_contexts = self._load_test_contexts(excluded, base_dir=base_dir, allow_unmatched_args=True)
         included_contexts = self._load_test_contexts(included, base_dir=base_dir)
 
         self.logger.debug("Including tests: " + str(included_contexts))
@@ -595,12 +595,14 @@ class TestLoader(object):
 
         return all_test_context_list
 
-    def _load_test_contexts(self, test_discovery_symbols, base_dir=None):
+    def _load_test_contexts(self, test_discovery_symbols, base_dir=None, allow_unmatched_args=False):
         """
         Load all test_context objects found in test_discovery_symbols.
         Each test discovery symbol is a dir or file path, optionally with with a ::Class or ::Class.method specified.
 
         :param test_discovery_symbols: list of test symbols to look into
+        :param allow_unmatched_args: don't raise when a symbol's @arguments match no test. Exclusions need this
+            because parametrizations can depend on the environment.
         :return: List of test_context objects discovered by checking test_discovery_symbols (may be empty if none were
             discovered)
         """
@@ -609,6 +611,7 @@ class TestLoader(object):
         if not isinstance(test_discovery_symbols, list):
             raise LoaderException("Expected test_discovery_symbols to be a list.")
         all_test_context_list = set()
+        unmatched_symbols = []
         for symbol in test_discovery_symbols:
             path_or_glob, cls_name, method, injected_args = self._parse_discovery_symbol(symbol, base_dir)
             self.logger.debug('Parsed symbol into {} - {} - {} - {}'
@@ -626,14 +629,28 @@ class TestLoader(object):
 
             self._add_top_level_dirs_to_sys_path(test_files)
 
+            symbol_contexts = set()
             for test_file in test_files:
                 directory = os.path.dirname(test_file)
                 module_name = os.path.basename(test_file)
                 test_context_list_for_file = self.discover(
                     directory, module_name, cls_name, method, injected_args=injected_args)
-                all_test_context_list.update(test_context_list_for_file)
+                symbol_contexts.update(test_context_list_for_file)
                 if len(test_context_list_for_file) == 0:
                     self.logger.warn("Didn't find any tests in %s " % test_file)
+            all_test_context_list.update(symbol_contexts)
+
+            if injected_args is not None and not allow_unmatched_args:
+                found_args = [ctx.injected_args for ctx in symbol_contexts]
+                requested_args = injected_args if isinstance(injected_args, list) else [injected_args]
+                unmatched_symbols.extend(
+                    f"{path_or_glob}::{cls_name}.{method}@{json.dumps(args, separators=(',', ':'))}"
+                    for args in requested_args if args not in found_args)
+
+        if unmatched_symbols:
+            raise LoaderException(
+                "No test matches these symbols. The arguments after '@' must equal a parametrization exactly, and "
+                "parametrizations can differ between revisions and environments:\n  " + "\n  ".join(unmatched_symbols))
 
         return all_test_context_list
 

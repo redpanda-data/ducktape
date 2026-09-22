@@ -18,6 +18,8 @@ You can optionally specify a specific set of parameters for tests with ``@parame
     ducktape <path_to_test>[::SomeTestClass[.test_method]]      # e.g. ducktape dir/tests/my_test.py::TestA.test_a
     ducktape <path_to_test>[::TestClass[.method[@params_json]]] # e.g. ducktape 'dir/tests/my_test.py::TestA.test_a@{"x": 100}'
 
+``params_json`` is a JSON object, or a list of them, and each must equal the parameters of a test exactly. Loading fails
+if one matches no test.
 
 Excluding Tests
 ===============
@@ -25,6 +27,8 @@ Excluding Tests
 Pass ``--exclude`` flag to exclude certain test(s) from the run, using the same syntax::
 
     ducktape ./my_tests_dir --exclude ./my_tests_dir/test_a.py ./my_tests_dir/test_b.py::TestB.test_b
+
+Unlike included tests, excluded parameters may match no test, since parametrizations can depend on the environment.
 
 
 

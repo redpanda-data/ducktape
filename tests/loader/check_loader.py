@@ -400,13 +400,52 @@ class CheckTestLoader(object):
         loader = TestLoader(self.SESSION_CONTEXT, logger=Mock())
         # parameter syntax is valid, but there is no such parameter defined in the test annotation in the code
         included = [os.path.join(discover_dir(), 'test_decorated.py::TestMatrix.test_thing@{"x": 1,"y": "missing"}')]
-        with pytest.raises(LoaderException, match='No tests to run'):
+        with pytest.raises(LoaderException, match='No test matches these symbols'):
             loader.load(included)
+
+    def check_test_loader_raises_on_params_not_found_among_found(self):
+        """Every argument set in a list must match, even when others load tests."""
+        loader = TestLoader(self.SESSION_CONTEXT, logger=Mock())
+        params = '[{"x": 1,"y": "test "}, {"x": 9,"y": "missing"}]'
+        included = [
+            os.path.join(discover_dir(), 'test_decorated.py::TestParametrized.test_thing'),
+            os.path.join(discover_dir(), 'test_decorated.py::TestMatrix.test_thing@{}'.format(params)),
+        ]
+        with pytest.raises(LoaderException) as e:
+            loader.load(included)
+
+        assert 'test_decorated.py::TestMatrix.test_thing@{"x":9,"y":"missing"}' in str(e.value)
+        assert '"test "' not in str(e.value)
+
+    def check_test_loader_raises_on_params_not_found_in_suite(self, tmp_path):
+        suite = tmp_path / "suite.yml"
+        symbol = os.path.join(discover_dir(), 'test_decorated.py::TestMatrix.test_thing@{"x":1,"y":"missing"}')
+        suite.write_text(yaml.dump({"suite": [symbol]}))
+        loader = TestLoader(self.SESSION_CONTEXT, logger=Mock())
+        with pytest.raises(LoaderException, match='No test matches these symbols'):
+            loader.load([str(suite)])
+
+    def check_test_loader_with_params_in_one_of_many_files(self):
+        """A directory symbol matches the arguments if any file has the test."""
+        loader = TestLoader(self.SESSION_CONTEXT, logger=Mock())
+        tests = loader.load([discover_dir() + '::TestMatrix.test_thing@{"x": 1,"y": "test "}'])
+        assert len(tests) == 1
+        assert tests[0].injected_args == {'x': 1, 'y': 'test '}
+
+    def check_test_loader_allow_exclude_params_not_found(self, tmp_path):
+        """Exclusions may name parametrizations the current environment doesn't produce."""
+        included = [os.path.join(discover_dir(), "test_decorated.py::TestMatrix")]
+        excluded = [os.path.join(discover_dir(), 'test_decorated.py::TestMatrix.test_thing@{"x": 1,"y": "missing"}')]
+        loader = TestLoader(self.SESSION_CONTEXT, logger=Mock())
+        assert len(loader.load(included, excluded)) == 8
+
+        suite = tmp_path / "suite.yml"
+        suite.write_text(yaml.dump({"suite": {"included": included, "excluded": excluded}}))
+        assert len(loader.load([str(suite)])) == 8
 
     def check_test_loader_allow_empty_tests_list(self):
         loader = TestLoader(self.SESSION_CONTEXT, logger=Mock(), allow_empty_tests_list=True)
-        # parameter syntax is valid, but there is no such parameter defined in the test annotation in the code
-        included = [os.path.join(discover_dir(), 'test_decorated.py::TestMatrix.test_thing@{"x": 1,"y": "missing"}')]
+        included = [os.path.join(discover_dir(), "sub_dir_no_tests", "just_some_file.py")]
         try:
             loader.load(included)
         except LoaderException:
