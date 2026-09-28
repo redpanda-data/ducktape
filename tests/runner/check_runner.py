@@ -471,6 +471,34 @@ class CheckRunner(object):
         assert finished_result.get("event_type") == "FINISHED"
         assert finished_result["result"].summary == "Test Passed"
 
+    @pytest.mark.parametrize('test_file,test_class,test_method,expected_cause', [
+        (FAILS_TO_INIT_IN_SETUP_TEST_FILE, FailsToInitInSetupTest, FailsToInitInSetupTest.test_nothing,
+         "Setup failed: AttributeError("),
+        (FAILING_TEST_FILE, FailingTest, FailingTest.test_fail, "Test failed: RuntimeError("),
+    ])
+    def check_logs_failure_cause_before_teardown(self, test_file, test_class, test_method, expected_cause):
+        """Teardown may log errors of its own, so the cause of the failure must be logged before it starts."""
+        mock_cluster = LocalhostCluster(num_nodes=1000)
+        session_context = tests.ducktape_mock.session_context()
+        test_context = self._do_expand(test_file=test_file, test_class=test_class, test_methods=[test_method],
+                                       cluster=mock_cluster, session_context=session_context)[0]
+        rc = RunnerClient(
+            "localhost", 22, test_context.test_id, 0, "dummy", "/tmp/dummy", True, False, 1, 1800000
+        )
+        rc.sender = MockSender()
+        rc.cluster = mock_cluster
+        rc.session_context = session_context
+        rc.test_metadata = MagicMock()
+        with patch('ducktape.tests.runner_client.RunnerClient._collect_test_context') as test_collect_patch:
+            test_collect_patch.return_value = test_context
+            rc.run()
+
+        log_messages = [args[0]["message"] for args, _ in rc.sender.send_results
+                        if args[0].get("event_type") == "LOG"]
+        cause_idx = next(i for i, msg in enumerate(log_messages) if expected_cause in msg)
+        teardown_idx = next(i for i, msg in enumerate(log_messages) if msg.endswith("Tearing down..."))
+        assert cause_idx < teardown_idx
+
 
 class ShrinkingLocalhostCluster(LocalhostCluster):
 
