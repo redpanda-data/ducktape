@@ -391,6 +391,7 @@ class RunnerClient(object):
         summary = []
         data = None
         sid_factory = MultiRunServiceIdFactory(num_runs) if self.deflake_enabled else service_id_factory
+        phase = "Setup"
         try:
             # Results from this test, as well as logs will be dumped here
             mkdir_p(TestContext.results_dir(self.test_context, self.test_index))
@@ -399,6 +400,7 @@ class RunnerClient(object):
 
             # Run the test unit
             self.setup_test()
+            phase = "Test"
             data = self.run_test(self.test_runner_timeout)
             test_status = PASS
 
@@ -407,6 +409,9 @@ class RunnerClient(object):
             test_status = FAIL
             err_trace = self._exc_msg(e)
             summary.extend(err_trace.split('\n'))
+            # Log the cause now: teardown often logs errors of its own, and
+            # the full summary is only logged after teardown finishes.
+            self.log(logging.INFO, f"{phase} failed: {e!r}")
 
         finally:
             for service in self.test_context.services:
