@@ -96,14 +96,8 @@ class JsonCluster(Cluster):
             cluster_json = json.load(open(os.path.abspath(cluster_file)))
         try:
             for ninfo in cluster_json["nodes"]:
-                ssh_config_dict = ninfo.get("ssh_config")
-                assert ssh_config_dict is not None, \
-                    "Cluster json has a node without a ssh_config field: %s\n Cluster json: %s" % (ninfo, cluster_json)
-
-                ssh_config = RemoteAccountSSHConfig(**ninfo.get("ssh_config", {}))
-                remote_account = \
-                    make_remote_account_func(ssh_config, ninfo.get("externally_routable_ip"),
-                                             ssh_exception_checks=kwargs.get("ssh_exception_checks"))
+                remote_account = self._make_remote_account(ninfo, make_remote_account_func,
+                                                           kwargs.get("ssh_exception_checks"))
                 if remote_account.externally_routable_ip is None:
                     remote_account.externally_routable_ip = self._externally_routable_ip(remote_account)
                 self._available_accounts.add_node(remote_account)
@@ -111,6 +105,14 @@ class JsonCluster(Cluster):
             msg = "JSON cluster definition invalid: %s: %s" % (e, traceback.format_exc(limit=16))
             raise ValueError(msg)
         self._id_supplier = 0
+
+    def _make_remote_account(self, ninfo, make_remote_account_func, ssh_exception_checks):
+        """Build the RemoteAccount for one entry of the cluster json's "nodes" list."""
+        ssh_config_dict = ninfo.get("ssh_config")
+        assert ssh_config_dict is not None, "Cluster json has a node without a ssh_config field: %s" % ninfo
+
+        return make_remote_account_func(RemoteAccountSSHConfig(**ssh_config_dict), ninfo.get("externally_routable_ip"),
+                                        ssh_exception_checks=ssh_exception_checks)
 
     def do_alloc(self, cluster_spec):
         try:
