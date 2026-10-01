@@ -1,0 +1,5 @@
+colliding_with_exclude:
+  included:
+    - test_colliding_ids.py
+  excluded:
+    - 'test_colliding_ids.py::CollidingIdsTest.test_punctuated_arg@{"path": "a/b"}'

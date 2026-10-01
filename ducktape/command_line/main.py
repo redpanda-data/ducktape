@@ -93,6 +93,38 @@ def update_latest_symlink(results_root, new_results_dir):
     os.symlink(new_results_dir, latest_test_dir)
 
 
+def format_collected_tests_text(tests):
+    return "Collected %d tests:\n" % len(tests) + "".join("    %s\n" % test for test in tests)
+
+
+def collected_test_record(test):
+    """Describe a test with the field names of the JSON report, plus a symbol that loads only this test."""
+    symbol = f"{test.file}::{test.cls_name}.{test.function_name}"
+    if test.injected_args is not None:
+        symbol += "@" + json.dumps(test.injected_args, sort_keys=True, separators=(',', ':'))
+    return {
+        "symbol": symbol,
+        "test_id": test.test_id,
+        "module_name": test.module_name,
+        "cls_name": test.cls_name,
+        "function_name": test.function_name,
+        "file_name": test.file,
+        "injected_args": test.injected_args,
+        "expected_num_nodes": test.expected_num_nodes,
+        "ignore": test.ignore,
+    }
+
+
+def format_collected_tests_json(tests):
+    return json.dumps({"tests": [collected_test_record(test) for test in tests]}, indent=2) + "\n"
+
+
+COLLECT_OUTPUT_FORMATS = {
+    "": format_collected_tests_text,
+    ".json": format_collected_tests_json,
+}
+
+
 def main():
     """Ducktape entry point. This contains top level logic for ducktape command-line program which does the following:
 
@@ -109,6 +141,17 @@ def main():
             injected_args = json.loads(args_dict["parameters"])
         except ValueError as e:
             print("parameters are not valid json: " + str(e))
+            sys.exit(1)
+
+    format_collected_tests = format_collected_tests_text
+    collect_output = args_dict["collect_output"]
+    if collect_output is not None:
+        if not args_dict["collect_only"]:
+            print("--collect-output requires --collect-only")
+            sys.exit(1)
+        format_collected_tests = COLLECT_OUTPUT_FORMATS.get(os.path.splitext(collect_output)[1])
+        if format_collected_tests is None:
+            print("--collect-output must end in .json for JSON, or have no suffix for text: " + collect_output)
             sys.exit(1)
 
     args_dict["globals"] = get_user_defined_globals(args_dict.get("globals"))
@@ -139,9 +182,13 @@ def main():
         sys.exit(1)
 
     if args_dict["collect_only"]:
-        print("Collected %d tests:" % len(tests))
-        for test in tests:
-            print("    " + str(test))
+        collected = format_collected_tests(tests)
+        if collect_output is None:
+            print(collected, end="")
+        else:
+            with open(collect_output, "w") as fp:
+                fp.write(collected)
+            print("Collected %d tests into %s" % (len(tests), collect_output))
         sys.exit(0)
 
     if args_dict["collect_num_nodes"]:

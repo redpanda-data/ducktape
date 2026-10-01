@@ -12,16 +12,96 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ducktape.command_line.main import collected_test_record
 from ducktape.command_line.main import get_user_defined_globals
+from ducktape.command_line.main import main
 from ducktape.command_line.main import setup_results_directory
 from ducktape.command_line.main import update_latest_symlink
+from ducktape.tests.loader import TestLoader
+
+import tests.ducktape_mock
 
 import json
 import os
 import os.path
 import pickle
 import pytest
+import sys
 import tempfile
+
+from mock import Mock
+
+
+LOADER_TEST_DIRECTORY = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "loader", "resources", "loader_test_directory"))
+TEST_FILES = [os.path.join(LOADER_TEST_DIRECTORY, name) for name in ("test_a.py", "test_decorated.py")]
+
+
+class CheckCollectedTestRecord(object):
+    def check_symbol_loads_only_its_test(self):
+        good_args_file = os.path.join(LOADER_TEST_DIRECTORY, "..", "bad_parametrizations", "test_good_args.py")
+        loader = TestLoader(tests.ducktape_mock.session_context(), logger=Mock())
+        collected = loader.load(TEST_FILES + [good_args_file])
+        assert any(test.injected_args is None for test in collected)
+        assert any(test.injected_args == {} for test in collected)
+        assert any(test.injected_args for test in collected)
+
+        for test in collected:
+            reloaded = loader.load([collected_test_record(test)["symbol"]])
+            assert [t.test_id for t in reloaded] == [test.test_id]
+
+
+class CheckCollectOutput(object):
+    @pytest.fixture(autouse=True)
+    def in_tmp_path(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        self.monkeypatch = monkeypatch
+
+    def run_main(self, *args):
+        self.monkeypatch.setattr(sys, "argv", ["ducktape", "--config-file", "no-such-config", *args])
+        with pytest.raises(SystemExit) as e:
+            main()
+        return e.value.code
+
+    def check_json(self, capsys):
+        assert self.run_main("--collect-only", "--collect-output", "collected.json", *TEST_FILES) == 0
+
+        with open("collected.json") as fp:
+            records = json.load(fp)["tests"]
+        assert len(records) == 19
+        assert capsys.readouterr().out.endswith("Collected 19 tests into collected.json\n")
+
+        record = next(r for r in records if r["test_id"].endswith("TestParametrized.test_thing.x=1.y=2"))
+        assert record == {
+            "symbol": os.path.join(LOADER_TEST_DIRECTORY, "test_decorated.py")
+            + '::TestParametrized.test_thing@{"x":1,"y":2}',
+            "test_id": record["test_id"],
+            "module_name": record["module_name"],
+            "cls_name": "TestParametrized",
+            "function_name": "test_thing",
+            "file_name": os.path.join(LOADER_TEST_DIRECTORY, "test_decorated.py"),
+            "injected_args": {"x": 1, "y": 2},
+            "expected_num_nodes": 0,
+            "ignore": False,
+        }
+
+    def check_text_matches_stdout(self, capsys):
+        assert self.run_main("--collect-only", *TEST_FILES) == 0
+        stdout = capsys.readouterr().out
+
+        assert self.run_main("--collect-only", "--collect-output", "collected", *TEST_FILES) == 0
+        with open("collected") as fp:
+            assert fp.read() == stdout
+        assert stdout.startswith("Collected 19 tests:\n")
+
+    @pytest.mark.parametrize(["args", "message"], [
+        pytest.param(["--collect-output", "collected.json"], "requires --collect-only", id="without collect-only"),
+        pytest.param(["--collect-only", "--collect-output", "collected.jsn"], "must end in .json", id="bad suffix"),
+    ])
+    def check_rejects_before_creating_results(self, capsys, args, message):
+        assert self.run_main(*args, *TEST_FILES) == 1
+        assert message in capsys.readouterr().out
+        assert not os.path.exists("results")
 
 
 class CheckSetupResultsDirectory(object):

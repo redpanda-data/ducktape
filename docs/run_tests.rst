@@ -18,6 +18,8 @@ You can optionally specify a specific set of parameters for tests with ``@parame
     ducktape <path_to_test>[::SomeTestClass[.test_method]]      # e.g. ducktape dir/tests/my_test.py::TestA.test_a
     ducktape <path_to_test>[::TestClass[.method[@params_json]]] # e.g. ducktape 'dir/tests/my_test.py::TestA.test_a@{"x": 100}'
 
+``params_json`` is a JSON object, or a list of them, and each must equal the parameters of a test exactly. Loading fails
+if one matches no test.
 
 Excluding Tests
 ===============
@@ -25,6 +27,8 @@ Excluding Tests
 Pass ``--exclude`` flag to exclude certain test(s) from the run, using the same syntax::
 
     ducktape ./my_tests_dir --exclude ./my_tests_dir/test_a.py ./my_tests_dir/test_b.py::TestB.test_b
+
+Unlike included tests, excluded parameters may match no test, since parametrizations can depend on the environment.
 
 
 
@@ -121,6 +125,21 @@ But running::
 
     ducktape test_suite.yml --exclude test_dir/test_a.py
 runs only ``test_b.py`` and ``test_c.py`` once, and skips ``test_a.py``.
+
+
+Collecting Tests
+================
+
+``--collect-only`` lists the tests ducktape would run. Add ``--collect-output`` to write the list to a file; a
+``.json`` suffix writes JSON. Each test's ``symbol`` loads only that test, so a script can filter the list and pass
+it back as a test suite, which may be written as JSON since JSON is valid YAML. For example, to run the tests that take a ``cloud_storage_type`` parameter::
+
+    ducktape ./my_tests_dir --collect-only --collect-output collected.json
+    jq '{selected: [.tests[] | select((.injected_args // {}) | has("cloud_storage_type")) | .symbol]}' \
+        collected.json > selected.yml
+    ducktape selected.yml
+
+Parametrizations can depend on the environment, so collect and run in the same one.
 
 
 Options
