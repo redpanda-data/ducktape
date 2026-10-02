@@ -22,6 +22,8 @@ class ServiceRegistry(object):
         self._services = OrderedDict()
         self._nodes = {}
         self.clean_errors = []
+        # failures from the most recent free_all
+        self.free_errors = []
 
     def __contains__(self, item):
         return id(item) in self._services
@@ -78,7 +80,12 @@ class ServiceRegistry(object):
             raise keyboard_interrupt
 
     def free_all(self):
-        """Release nodes back to the cluster."""
+        """Release nodes back to the cluster.
+
+        A service that fails to free may still be using its nodes, so each failure is recorded in
+        ``free_errors`` for the test runner to act on, rather than only being logged.
+        """
+        self.free_errors = []
         keyboard_interrupt = None
         for service in self._services.values():
             try:
@@ -87,6 +94,7 @@ class ServiceRegistry(object):
                 if isinstance(e, KeyboardInterrupt):
                     keyboard_interrupt = e
                 service.logger.warn("Error freeing service %s: %s" % (service, e))
+                self.free_errors.append("%s: %s" % (service.who_am_i(), repr(e)))
 
         if keyboard_interrupt is not None:
             raise keyboard_interrupt
