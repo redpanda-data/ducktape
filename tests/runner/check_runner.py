@@ -31,6 +31,7 @@ from tests.runner.resources.test_fails_to_init_in_setup import FailsToInitInSetu
 from .resources.test_bad_actor import BadActorTest
 from .resources.test_thingy import ClusterTestThingy, TestThingy
 from .resources.test_failing_tests import FailingTest
+from .resources.test_leaked_worker import LeakedWorkerTest
 from ducktape.tests.reporter import JUnitReporter
 from ducktape.errors import TimeoutError
 
@@ -56,6 +57,8 @@ BAD_ACTOR_TEST_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "resources/test_bad_actor.py"))
 UNCLEAN_TEARDOWN_TEST_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "resources/test_unclean_teardown.py"))
+LEAKED_WORKER_TEST_FILE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "resources/test_leaked_worker.py"))
 
 
 class CheckRunner(object):
@@ -231,6 +234,37 @@ class CheckRunner(object):
         assert results.num_failed == 4
         assert results.num_passed == 0
         assert results.num_ignored == 0
+
+    def _run_leaked_worker_test(self, test_method):
+        mock_cluster = LocalhostCluster(num_nodes=1000)
+        session_context = tests.ducktape_mock.session_context()
+        ctx_list = self._do_expand(test_file=LEAKED_WORKER_TEST_FILE, test_class=LeakedWorkerTest,
+                                   test_methods=[test_method], cluster=mock_cluster,
+                                   session_context=session_context)
+        runner = TestRunner(mock_cluster, session_context, Mock(), ctx_list, 1)
+        results = runner.run_all_tests()
+        assert len(results) == 1
+        return [r for r in results][0]
+
+    def check_stopped_worker_passes(self):
+        result = self._run_leaked_worker_test(LeakedWorkerTest.test_stopped_worker)
+        assert result.test_status == PASS
+
+    def check_worker_surviving_teardown_fails_test(self):
+        """A worker still running when teardown frees its service's nodes fails the test, even though
+        the test body passed."""
+        result = self._run_leaked_worker_test(LeakedWorkerTest.test_worker_survives_teardown)
+        assert result.test_status == FAIL
+        assert "Failed to free services" in result.summary
+        assert "worker threads still running" in result.summary
+
+    def check_free_with_running_worker_fails_test(self):
+        """A test that frees a service while its worker is running fails at the free() call."""
+        result = self._run_leaked_worker_test(LeakedWorkerTest.test_free_running_worker)
+        assert result.test_status == FAIL
+        assert "worker threads still running" in result.summary
+        # teardown stops the service, after which its nodes are freed
+        assert "Failed to free services" not in result.summary
 
     # mock an error reporting test failure - this should not prevent subsequent tests from execution and mark
     # failed test as failed correctly
