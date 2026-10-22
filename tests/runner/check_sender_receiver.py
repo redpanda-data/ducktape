@@ -27,10 +27,11 @@ import os
 
 
 class CheckSenderReceiver(object):
-    def ready_response(self, client_id, port):
+    def ready_response(self, client_id, port, request_timeout_ms=None):
         sender_event_factory = ClientEventFactory("test_1", 0, client_id)
         sender = Sender(server_host='localhost', server_port=port,
-                        message_supplier=sender_event_factory, logger=logging)
+                        message_supplier=sender_event_factory, logger=logging,
+                        request_timeout_ms=request_timeout_ms)
         sender.send(sender_event_factory.ready())
 
     def check_simple_messaging(self):
@@ -64,7 +65,7 @@ class CheckSenderReceiver(object):
         port = receiver.port
 
         try:
-            p = mp.Process(target=self.ready_response, args=(client_id, port))
+            p = mp.Process(target=self.ready_response, args=(client_id, port, 100))
             p.start()
             with pytest.raises(TimeoutError):
                 receiver.recv(timeout=0)
