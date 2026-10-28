@@ -188,6 +188,8 @@ class RunnerClient(object):
         self.test = None
         self.test_context = None
         self.all_services = None
+        # set when a run's service clean-up failed, i.e. resources may have leaked
+        self._unclean_teardown = False
 
     @property
     def deflake_enabled(self) -> bool:
@@ -293,6 +295,11 @@ class RunnerClient(object):
                                  "exception matches deflake exclude exceptions. stopping deflake retries...")
                         stopped_deflake = True
                         break
+
+                if self._unclean_teardown:
+                    # deflake retries would run on nodes the failed clean may have left dirty
+                    self.log(logging.WARN, "Service clean-up failed; skipping any remaining deflake attempts")
+                    break
         except BaseException as e:
             try:
                 internal_exception = str(e)
@@ -317,7 +324,8 @@ class RunnerClient(object):
                 summary,
                 data,
                 start_time,
-                stop_time)
+                stop_time,
+                unclean_teardown=self._unclean_teardown)
 
             self.log(logging.INFO, "Data: %s" % str(result.data))
 
@@ -429,6 +437,16 @@ class RunnerClient(object):
                 service_errors = self.test_context.services.errors()
                 if service_errors:
                     summary.extend(["", "", service_errors])
+
+                # a failed clean means resources may have leaked on the test's nodes, which
+                # can poison unrelated tests that are later allocated those nodes, so it must
+                # fail the test rather than be a warning buried in the logs of a green run
+                if self.test_context.services.clean_errors:
+                    self._unclean_teardown = True
+                    if test_status == PASS:
+                        summary.extend(["", "Test passed but one or more services failed to clean up;"
+                                            " resources may have leaked on its nodes"])
+                    test_status = FAIL
 
             # free nodes
             if self.test:
