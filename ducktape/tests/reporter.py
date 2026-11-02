@@ -308,11 +308,13 @@ class HTMLSummaryReporter(SummaryReporter):
         args = {
             'ducktape_version': ducktape_version(),
             'command_line': self.results.command_line,
+            'num_scheduled': self.results.num_scheduled,
             'num_tests': num_tests,
             'num_passes': self.results.num_passed,
             'num_flaky': self.results.num_flaky,
             'num_failures': self.results.num_failed,
             'num_ignored': self.results.num_ignored,
+            'num_not_run': self.results.num_not_run,
             'run_time': format_time(self.results.run_time_seconds),
             'session': self.results.session_context.session_id,
             'passed_tests': "".join(passed_result_string),

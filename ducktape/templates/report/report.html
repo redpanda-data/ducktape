@@ -38,11 +38,13 @@
         render: function() {
           return (
             <tr>
+              <td colSpan='5' align='center'>{this.props.summary_prop.scheduled}</td>
               <td colSpan='5' align='center'>{this.props.summary_prop.tests}</td>
               <td colSpan='5' align='center'>{this.props.summary_prop.passes}</td>
               <td colSpan='5' align='center'>{this.props.summary_prop.flaky}</td>
               <td colSpan='5' align='center'>{this.props.summary_prop.failures}</td>
               <td colSpan='5' align='center'>{this.props.summary_prop.ignored}</td>
+              <td colSpan='5' align='center' className={this.props.summary_prop.not_run > 0 ? 'fail' : ''}>{this.props.summary_prop.not_run}</td>
               <td colSpan='5' align='center'>{this.props.summary_prop.run_time}</td>
             </tr>
           );
@@ -55,11 +57,13 @@
             <table id="summary_report_table">
               <thead>
                 <tr id="summary_header_row">
+                  <th colSpan='5' align='center'>Scheduled</th>
                   <th colSpan='5' align='center'>Tests</th>
                   <th colSpan='5' align='center'>Passes</th>
                   <th colSpan='5' align='center'>Flaky</th>
                   <th colSpan='5' align='center'>Failures</th>
                   <th colSpan='5' align='center'>Ignored</th>
+                  <th colSpan='5' align='center'>Not run</th>
                   <th colSpan='5' align='center'>Time</th>
                 </tr>
               </thead>
@@ -181,11 +185,13 @@
       });
 
       SUMMARY=[{
+        "scheduled": %(num_scheduled)d,
         "tests": %(num_tests)d,
         "passes": %(num_passes)d,
         "flaky": %(num_flaky)d,
         "failures": %(num_failures)d,
         "ignored": %(num_ignored)d,
+        "not_run": %(num_not_run)d,
         "run_time": '%(run_time)s'
       }];
       

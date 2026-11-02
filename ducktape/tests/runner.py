@@ -129,6 +129,7 @@ class TestRunner(object):
 
         self.test_counter = 1
         self.total_tests = len(self.scheduler)
+        self.results.num_scheduled = self.total_tests
         # This immutable dict tracks test_id -> test_context
         self._test_context = persistence.make_dict(**{t.test_id: t for t in tests})
         self._test_cluster = {}  # Track subcluster assigned to a particular TestKey
