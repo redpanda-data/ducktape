@@ -144,6 +144,8 @@ class TestResults(object):
         self.start_time = -1
         self.stop_time = -1
         self.client_status = client_status
+        # Number of tests the session set out to run, including any that never ran
+        self.num_scheduled = None
 
     def append(self, obj):
         return self._results.append(obj)
@@ -169,6 +171,10 @@ class TestResults(object):
     @property
     def num_flaky(self):
         return len([r for r in self._results if r.test_status == FLAKY])
+
+    @property
+    def num_not_run(self):
+        return self.num_scheduled - len(self._results)
 
     @property
     def run_time_seconds(self):
@@ -223,6 +229,7 @@ class TestResults(object):
             "cluster_nodes_allocated": self._stats([r.nodes_allocated for r in self]),
             "cluster_utilization": cluster_utilization,
             "cluster_num_nodes": len(self.cluster),
+            "num_scheduled": self.num_scheduled,
             "num_passed": self.num_passed,
             "num_failed": self.num_failed,
             "num_ignored": self.num_ignored,
