@@ -202,6 +202,11 @@ class RemoteAccount(HttpMixin):
         self._log(logging.DEBUG,
                   f"ssh_config: {self.ssh_config}, external IP: {ip}")
 
+        sock = socket.create_connection(
+            (self.ssh_config.hostname, self.ssh_config.port),
+            timeout=self.ssh_config.connecttimeout)
+        # TCP_NODELAY saves about 40 ms per command.
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         client.connect(
             hostname=self.ssh_config.hostname,
             port=self.ssh_config.port,
@@ -209,7 +214,7 @@ class RemoteAccount(HttpMixin):
             password=self.ssh_config.password,
             key_filename=self.ssh_config.identityfile,
             look_for_keys=False,
-            timeout=self.ssh_config.connecttimeout)
+            sock=sock)
 
         if self._ssh_client:
             self._ssh_client.close()
