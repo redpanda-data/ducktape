@@ -452,6 +452,13 @@ class RunnerClient(object):
             if self.test:
                 self.log(logging.DEBUG, "Freeing nodes...")
                 self._do_safely(self.test.free_nodes, "Error freeing nodes:")
+
+                # a service that could not be freed may still be running processes on its nodes,
+                # which would otherwise surface as failures in whichever test gets those nodes next
+                free_errors = self.test_context.services.free_errors
+                if free_errors:
+                    test_status = FAIL
+                    summary.extend(["", "", "Failed to free services:"] + free_errors)
             return test_status, summary, data
 
     def _check_cluster_utilization(self, result, summary):

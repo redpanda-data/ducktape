@@ -14,11 +14,18 @@
 
 from ducktape.services.service import Service
 
+import sys
 import threading
+import time
 import traceback
 
 
 class BackgroundThreadService(Service):
+
+    # How long free() waits for worker threads to exit before refusing to free the nodes. By the time
+    # nodes are freed the service has normally been stopped and cleaned, so this only needs to cover a
+    # worker draining the last output of a remote process that has just been killed.
+    free_worker_join_timeout_sec = 10
 
     def __init__(self, context, num_nodes=None, cluster_spec=None, *args, **kwargs):
         super(BackgroundThreadService, self).__init__(context, num_nodes, cluster_spec, *args, **kwargs)
@@ -82,6 +89,43 @@ class BackgroundThreadService(Service):
         super(BackgroundThreadService, self).stop()
 
         self._propagate_exceptions()
+
+    def free(self):
+        """Free each node, after checking that no worker thread is still running.
+
+        A worker that is still alive may yet run commands on its node, e.g. launch the remote process
+        it was started for after stop() and clean() have already looked for it, so its node is not
+        safe to hand to another service. In that case raise instead of freeing.
+        """
+        self._check_workers_finished()
+        super(BackgroundThreadService, self).free()
+
+    def _check_workers_finished(self):
+        if self.context.session_context.no_teardown:
+            # services are deliberately left running with --no-teardown
+            return
+
+        deadline = time.time() + self.free_worker_join_timeout_sec
+        for worker in self.worker_threads.values():
+            worker.join(max(0, deadline - time.time()))
+
+        alive_workers = [worker for worker in self.worker_threads.values() if worker.is_alive()]
+        if not alive_workers:
+            return
+
+        frames = sys._current_frames()
+        for worker in alive_workers:
+            frame = frames.get(worker.ident)
+            stack = "".join(traceback.format_stack(frame)) if frame else "<no stack>\n"
+            self.logger.warning("%s: worker thread %s still running at free, stack:\n%s" %
+                                (self.who_am_i(), worker.name, stack))
+
+        raise RuntimeError(
+            "%s: refusing to free nodes, worker threads still running after %ss: %s. The service was "
+            "freed without being stopped, or stop() did not end the processes its workers run, which "
+            "would then leak onto the freed nodes." %
+            (self.who_am_i(), self.free_worker_join_timeout_sec,
+             ", ".join(worker.name for worker in alive_workers)))
 
     def wait_node(self, node, timeout_sec=600):
         idx = self.idx(node)
