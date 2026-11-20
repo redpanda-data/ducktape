@@ -15,7 +15,7 @@
 from ducktape.cluster.cluster_spec import ClusterSpec
 from ducktape.services.background_thread import BackgroundThreadService
 from ducktape.errors import TimeoutError
-from tests.ducktape_mock import test_context, MockNode
+from tests.ducktape_mock import mock_cluster, test_context, session_context, MockNode
 import pytest
 import time
 
@@ -55,10 +55,23 @@ class DummyService(BackgroundThreadService):
         self.running = False
 
 
+class SlowExitService(DummyService):
+    """DummyService whose worker takes exit_delay_sec to exit after being stopped, like a worker
+    reading the remaining output of a remote process that has just been killed."""
+
+    def __init__(self, context, exit_delay_sec):
+        super(SlowExitService, self).__init__(context, float('inf'))
+        self.exit_delay_sec = exit_delay_sec
+
+    def _worker(self, idx, node):
+        super(SlowExitService, self)._worker(idx, node)
+        time.sleep(self.exit_delay_sec)
+
+
 class CheckBackgroundThreadService(object):
 
     def setup_method(self, method):
-        self.context = test_context()
+        self.context = test_context(cluster=mock_cluster())
 
     def check_service_constructor(self):
         """Check that BackgroundThreadService constructor corresponds to the base class's one."""
@@ -120,3 +133,64 @@ class CheckBackgroundThreadService(object):
         with pytest.raises(Exception):
             self.service.stop(timeout_sec=1)
         assert hasattr(self.service, 'errors')
+
+    def check_free_after_stop(self):
+        self.service = DummyService(self.context, float('inf'))
+        self.service.start()
+        node = self.service.nodes[0]
+        self.service.stop()
+        self.service.free()
+        assert self.service.nodes == []
+        self.context.cluster.free.assert_called_once_with(node)
+
+    def check_free_never_started(self):
+        self.service = DummyService(self.context, float('inf'))
+        self.service.free()
+        assert self.service.nodes == []
+
+    def check_free_with_running_worker_raises(self):
+        """Freeing a service whose worker is still running must fail and keep the nodes, since the
+        worker may still act on them."""
+        self.service = DummyService(self.context, float('inf'))
+        self.service.free_worker_join_timeout_sec = .1
+        self.service.start()
+        node = self.service.nodes[0]
+
+        with pytest.raises(RuntimeError, match="worker threads still running"):
+            self.service.free()
+        assert self.service.nodes == [node]
+        self.context.cluster.free.assert_not_called()
+
+        # once the worker is stopped the nodes can be freed
+        self.service.stop()
+        self.service.free()
+        assert self.service.nodes == []
+        self.context.cluster.free.assert_called_once_with(node)
+
+    def check_free_waits_for_exiting_worker(self):
+        """A worker still finishing up when free() is called gets free_worker_join_timeout_sec to exit."""
+        self.service = SlowExitService(self.context, exit_delay_sec=.5)
+        self.service.free_worker_join_timeout_sec = 5
+        self.service.start()
+        self.service.stop()
+        assert self.service.worker_threads[1].is_alive()
+        self.service.free()
+        assert self.service.nodes == []
+
+    def check_free_slow_worker_exceeds_timeout(self):
+        self.service = SlowExitService(self.context, exit_delay_sec=1)
+        self.service.free_worker_join_timeout_sec = .1
+        self.service.start()
+        self.service.stop()
+        with pytest.raises(RuntimeError, match="worker threads still running"):
+            self.service.free()
+
+    def check_free_no_teardown(self):
+        """With --no-teardown services are deliberately left running, so free() must not fail."""
+        context = test_context(session_context=session_context(no_teardown=True))
+        self.service = DummyService(context, float('inf'))
+        self.service.free_worker_join_timeout_sec = .1
+        self.service.start()
+        self.service.free()
+        assert self.service.nodes == []
+        self.service.stop()
