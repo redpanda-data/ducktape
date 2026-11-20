@@ -48,6 +48,23 @@ DEFAULT_TEST_FUNCTION_PATTERN = "(^test.*)|(.*test$)"
 _requests_session = requests.session()
 
 
+def load_historical_run_times(report_url):
+    """Return a dict of test_id -> run time in seconds from the JSON report of an earlier run.
+
+    Tests that did not run (for example ignored tests) are left out. If a test appears more than once, its
+    longest run is kept.
+    """
+    response = _requests_session.get(report_url)
+    response.raise_for_status()
+
+    run_times = {}
+    for result in response.json()["results"]:
+        run_time = float(result["run_time_seconds"])
+        if run_time > 0:
+            run_times[result["test_id"]] = max(run_time, run_times.get(result["test_id"], 0))
+    return run_times
+
+
 def _describe_json_violation(injected_args):
     """Return why injected_args won't survive a JSON round trip, or None.
 

@@ -118,3 +118,51 @@ class CheckScheduler(object):
         # subsequent calls should return empty list and not modify scheduler
         assert not scheduler.filter_unschedulable_tests()
         assert scheduler.peek() == self.tc0
+
+    def _start_order(self, scheduler):
+        order = []
+        while len(scheduler) > 0:
+            t = scheduler.peek()
+            order.append(t)
+            scheduler.remove(t)
+        return order
+
+    def check_most_node_time_first(self):
+        """With expected run times, tests start from the most node time (run time * nodes) to the least."""
+        # node time: tc0 = 300 * 10, tc1 = 20 * 50, tc2 = 100 * 100
+        run_times = {self.tc0.test_id: 300, self.tc1.test_id: 20, self.tc2.test_id: 100}
+        scheduler = TestScheduler(self.tc_list, self.cluster, expected_run_times=run_times)
+
+        assert self._start_order(scheduler) == [self.tc2, self.tc0, self.tc1]
+
+    def check_long_small_test_before_short_large_test(self):
+        """A long test on few nodes starts before a short test on many nodes."""
+        # node time: tc0 = 1000 * 10, tc1 = 10 * 50, tc2 = 5 * 100
+        run_times = {self.tc0.test_id: 1000, self.tc1.test_id: 10, self.tc2.test_id: 5}
+        scheduler = TestScheduler(self.tc_list, self.cluster, expected_run_times=run_times)
+
+        assert self._start_order(scheduler) == [self.tc0, self.tc1, self.tc2]
+
+    def check_equal_node_time_longest_first(self):
+        """Tests with the same node time start from the longest to the shortest."""
+        # node time is 1000 for all three
+        run_times = {self.tc0.test_id: 100, self.tc1.test_id: 20, self.tc2.test_id: 10}
+        scheduler = TestScheduler(self.tc_list, self.cluster, expected_run_times=run_times)
+
+        assert self._start_order(scheduler) == [self.tc0, self.tc1, self.tc2]
+
+    def check_unknown_run_time_is_average(self):
+        """A test without an expected run time is ordered as if it took the average."""
+        # tc1 gets the average of 200, so node time: tc0 = 300 * 10, tc1 = 200 * 50, tc2 = 100 * 100
+        run_times = {self.tc0.test_id: 300, self.tc2.test_id: 100}
+        scheduler = TestScheduler(self.tc_list, self.cluster, expected_run_times=run_times)
+
+        assert self._start_order(scheduler) == [self.tc1, self.tc2, self.tc0]
+
+    def check_most_node_time_that_fits(self):
+        """A test with less node time starts when the one with the most does not fit in the available nodes."""
+        run_times = {self.tc0.test_id: 20, self.tc1.test_id: 100, self.tc2.test_id: 300}
+        scheduler = TestScheduler(self.tc_list, self.cluster, expected_run_times=run_times)
+
+        self.cluster.alloc(Service.setup_cluster_spec(num_nodes=40))
+        assert scheduler.peek() == self.tc1

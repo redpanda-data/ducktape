@@ -23,7 +23,7 @@ import traceback
 
 from ducktape.command_line.defaults import ConsoleDefaults
 from ducktape.command_line.parse_args import parse_args
-from ducktape.tests.loader import TestLoader, LoaderException
+from ducktape.tests.loader import TestLoader, LoaderException, load_historical_run_times
 from ducktape.tests.loggermaker import close_logger
 from ducktape.tests.reporter import SimpleStdoutSummaryReporter, SimpleFileSummaryReporter, \
     HTMLSummaryReporter, JSONReporter, JUnitReporter, FailedTestSymbolReporter
@@ -123,6 +123,19 @@ COLLECT_OUTPUT_FORMATS = {
     "": format_collected_tests_text,
     ".json": format_collected_tests_json,
 }
+
+
+def expected_run_times(historical_report, logger):
+    """Return a dict of test_id -> seconds read from the historical report, or None if there is no report or it
+    cannot be read. The order in which tests start is only an optimization, so an unreadable report is not an error.
+    """
+    if not historical_report:
+        return None
+    try:
+        return load_historical_run_times(historical_report)
+    except Exception as e:
+        logger.warning("could not load the historical report, starting tests by cluster size: %s" % e)
+        return None
 
 
 def main():
@@ -236,7 +249,8 @@ def main():
         session_logger.warning("specified number of deflake runs specified to be less than 1, running without deflake.")
     deflake_num = max(1, deflake_num)
     deflake_exclude_exceptions = args_dict['deflake_exclude_exceptions']
-    runner = TestRunner(cluster, session_context, session_logger, tests, deflake_num, deflake_exclude_exceptions)
+    runner = TestRunner(cluster, session_context, session_logger, tests, deflake_num, deflake_exclude_exceptions,
+                        expected_run_times=expected_run_times(args_dict["historical_report"], session_logger))
     test_results = runner.run_all_tests()
     test_results.command_line = " ".join(sys.argv)
     # Report results

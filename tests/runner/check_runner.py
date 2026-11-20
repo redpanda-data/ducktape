@@ -105,6 +105,26 @@ class CheckRunner(object):
         result_with_data = [r for r in results if r.data is not None][0]
         assert result_with_data.data == {"data": 3.14159}
 
+    def check_run_with_expected_run_times(self):
+        """Check that expected run times decide which test starts first, and that every test still runs."""
+        mock_cluster = LocalhostCluster(num_nodes=1000)
+        session_context = tests.ducktape_mock.session_context()
+
+        test_methods = [TestThingy.test_pi, TestThingy.test_ignore1, TestThingy.test_ignore2, TestThingy.test_failure]
+        ctx_list = self._do_expand(test_file=TEST_THINGY_FILE, test_class=TestThingy, test_methods=test_methods,
+                                   cluster=mock_cluster, session_context=session_context)
+        longest = ctx_list[-1]
+        run_times = {tc.test_id: 1 for tc in ctx_list}
+        run_times[longest.test_id] = 100
+
+        runner = TestRunner(mock_cluster, session_context, Mock(), ctx_list, 1, expected_run_times=run_times)
+        assert runner.scheduler.peek() == longest
+
+        results = runner.run_all_tests()
+        assert len(results) == len(ctx_list)
+        assert results.num_failed == 1
+        assert results.num_passed == 1
+
     def check_deflake_run(self):
         """Check expected behavior when running a single test."""
         mock_cluster = LocalhostCluster(num_nodes=1000)

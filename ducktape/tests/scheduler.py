@@ -16,12 +16,21 @@
 class TestScheduler(object):
     """This class tracks tests which are scheduled to run, and provides an ordering based on the current cluster state.
 
-    The ordering is "on-demand"; calling next returns the largest cluster user which fits in the currently
-    available cluster nodes.
+    The ordering is "on-demand"; calling next returns the first test in the list which fits in the currently
+    available cluster nodes. The list is sorted from the largest cluster user to the smallest, or, when expected
+    run times are known, from the most node time (run time multiplied by the number of nodes) to the least.
+
+    Ordering by node time keeps a long test that needs few nodes from starting last and holding the session open
+    after every other test has finished, while still placing the large tests before the cluster fills up.
     """
 
-    def __init__(self, test_contexts, cluster):
+    def __init__(self, test_contexts, cluster, expected_run_times=None):
+        """
+        :param expected_run_times: dict of test_id -> seconds from an earlier run, or None. A test that is
+            missing from it is given the average.
+        """
         self.cluster = cluster
+        self._expected_run_times = expected_run_times or {}
 
         # Track tests which would never be offered up by the scheduling algorithm due to insufficient
         # cluster resources
@@ -53,14 +62,25 @@ class TestScheduler(object):
     def _sort_test_context_list(self):
         """Replace self.test_context_list with a sorted shallow copy
 
-        Sort from largest cluster users to smallest
+        With expected run times, sort from the most expected node time to the least, then from the longest test
+        to the shortest. Without them, sort from largest cluster users to smallest.
         """
-        # sort from the largest cluster users to smallest
-        self._test_context_list = sorted(
-            self._test_context_list,
-            key=lambda tc: tc.expected_num_nodes,
-            reverse=True
-        )
+        run_times = self._expected_run_times
+        if not run_times:
+            self._test_context_list = sorted(
+                self._test_context_list,
+                key=lambda tc: tc.expected_num_nodes,
+                reverse=True
+            )
+            return
+
+        average = sum(run_times.values()) / len(run_times)
+
+        def node_time(tc):
+            run_time = run_times.get(tc.test_id, average)
+            return (run_time * tc.expected_num_nodes, run_time)
+
+        self._test_context_list = sorted(self._test_context_list, key=node_time, reverse=True)
 
     def peek(self):
         """Locate and return the next object to be scheduled, without removing it internally.

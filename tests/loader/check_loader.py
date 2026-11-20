@@ -13,9 +13,11 @@
 # limitations under the License.
 
 from ducktape.tests.loader import TestLoader, LoaderException, _describe_json_violation, _requests_session
+from ducktape.tests.loader import load_historical_run_times
 
 import tests.ducktape_mock
 
+import json
 import os
 import os.path
 import pytest
@@ -557,6 +559,30 @@ class CheckTestLoader(object):
         loader = TestLoader(self.SESSION_CONTEXT, logger=Mock(), subset=1, subsets=2, historical_report=report_url)
         tests = loader.load([file])
         assert len(tests) == 2
+
+    def check_load_historical_run_times(self):
+        """Check that run times are read per test id from a report."""
+        report_url = "file://" + os.path.join(resources_dir(), "report.json")
+
+        assert load_historical_run_times(report_url) == {
+            "tests.loader.resources.loader_test_directory.test_b.TestB.test_b": 10,
+            "tests.loader.resources.loader_test_directory.test_b.TestBB.test_bb_one": 5,
+            "tests.loader.resources.loader_test_directory.test_b.TestBB.bb_two_test": 1,
+        }
+
+    def check_load_historical_run_times_skips_tests_that_did_not_run(self):
+        """Check that ignored tests are left out, and that the longest run of a repeated test is kept."""
+        report = {"results": [
+            {"test_id": "ignored", "run_time_seconds": 0.0, "test_status": "IGNORE"},
+            {"test_id": "repeated", "run_time_seconds": 3.5},
+            {"test_id": "repeated", "run_time_seconds": 7},
+            {"test_id": "repeated", "run_time_seconds": "2.0"},
+        ]}
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
+            json.dump(report, f)
+            f.flush()
+
+            assert load_historical_run_times("file://" + f.name) == {"repeated": 7}
 
     def check_loader_with_non_yml_file(self):
         """
