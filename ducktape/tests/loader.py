@@ -28,7 +28,7 @@ import traceback
 import requests
 import yaml
 
-from ducktape.tests.test import Test, TestContext
+from ducktape.tests.test import Test, TestContext, run_time_key
 from ducktape.mark import parametrized
 from ducktape.mark.mark_expander import MarkedFunctionExpander
 
@@ -46,6 +46,25 @@ DEFAULT_TEST_FUNCTION_PATTERN = "(^test.*)|(.*test$)"
 
 # Included for unit tests to be able to add support for loading local file:/// URLs.
 _requests_session = requests.session()
+
+
+def load_historical_run_times(report_url):
+    """Return a dict of run_time_key() -> run time in seconds from the JSON report of an earlier run.
+
+    Tests that did not run (for example ignored tests) are left out. If a test appears more than once, its
+    longest run is kept.
+    """
+    response = _requests_session.get(report_url)
+    response.raise_for_status()
+
+    run_times = {}
+    for result in response.json()["results"]:
+        run_time = float(result["run_time_seconds"])
+        if run_time > 0:
+            key = run_time_key(
+                result["module_name"], result["cls_name"], result["function_name"], result["injected_args"])
+            run_times[key] = max(run_time, run_times.get(key, 0))
+    return run_times
 
 
 def _describe_json_violation(injected_args):

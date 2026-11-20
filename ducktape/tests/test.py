@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import copy
+import json
 from contextlib import contextmanager
 import logging
 import os
@@ -23,6 +24,7 @@ import tempfile
 import textwrap
 
 from ducktape.cluster.cluster_spec import ClusterSpec
+from ducktape.json_serializable import DucktapeJSONEncoder
 from ducktape.tests.loggermaker import LoggerMaker, close_logger
 from ducktape.tests.session import SessionContext
 from ducktape.utils.local_filesystem_utils import mkdir_p
@@ -260,6 +262,20 @@ class TestLoggerMaker(LoggerMaker):
         self._logger.addHandler(ch)
 
 
+def run_time_key(module_name, cls_name, function_name, injected_args):
+    """Identify a test across sessions, to find its run time in the report of an earlier session.
+
+    The test_id cannot be used for this. It is built from str() of each argument in the order the test declares
+    them, while a report holds the arguments as JSON, and a tool that combines reports may rebuild the test_id
+    from those: with the arguments in another order, and with an enum as its value instead of its name.
+    """
+    try:
+        args = json.dumps(injected_args, sort_keys=True, cls=DucktapeJSONEncoder)
+    except (TypeError, ValueError):
+        args = repr(injected_args)
+    return module_name, cls_name, function_name, args
+
+
 class TestContext(object):
     """Wrapper class for state variables needed to properly run a single 'test unit'."""
 
@@ -425,6 +441,11 @@ class TestContext(object):
     @property
     def test_id(self):
         return self.test_name
+
+    @property
+    def run_time_key(self):
+        """Key of this test in the expected run times, see run_time_key()."""
+        return run_time_key(self.module_name, self.cls_name, self.function_name, self.injected_args)
 
     @property
     def test_name(self):
