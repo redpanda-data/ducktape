@@ -99,7 +99,8 @@ class TestRunner(object):
                  deflake_exclude_exceptions=[],
                  min_port=ConsoleDefaults.TEST_DRIVER_MIN_PORT,
                  max_port=ConsoleDefaults.TEST_DRIVER_MAX_PORT,
-                 finish_join_timeout=DEFAULT_MP_JOIN_TIMEOUT):
+                 finish_join_timeout=DEFAULT_MP_JOIN_TIMEOUT,
+                 expected_run_times=None):
 
         # Set handler for SIGTERM (aka kill -15)
         # Note: it doesn't work to set a handler for SIGINT (Ctrl-C) in this parent process because the
@@ -125,7 +126,8 @@ class TestRunner(object):
         self.exit_first = self.session_context.exit_first
 
         self.main_process_pid = os.getpid()
-        self.scheduler = TestScheduler(tests, self.cluster)
+        self.scheduler = TestScheduler(
+            tests, self.cluster, expected_run_times=expected_run_times, logger=session_logger)
 
         self.test_counter = 1
         self.total_tests = len(self.scheduler)

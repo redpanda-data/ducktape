@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ducktape.command_line.main import collected_test_record
+from ducktape.command_line.main import expected_run_times
 from ducktape.command_line.main import get_user_defined_globals
 from ducktape.command_line.main import main
 from ducktape.command_line.main import setup_results_directory
@@ -249,3 +250,24 @@ class CheckUserDefinedGlobals(object):
 
         finally:
             os.remove(fname)
+
+
+class CheckExpectedRunTimes(object):
+    def check_no_report(self):
+        logger = Mock()
+        assert expected_run_times(None, logger) is None
+        logger.warning.assert_not_called()
+
+    def check_unreadable_report_is_not_an_error(self):
+        logger = Mock()
+        assert expected_run_times("http://localhost:1/no-such-report.json", logger) is None
+        logger.warning.assert_called_once()
+
+    def check_report_without_results_is_not_an_error(self, tmp_path, monkeypatch):
+        response = Mock()
+        response.json.return_value = {"not_results": []}
+        monkeypatch.setattr("ducktape.tests.loader._requests_session", Mock(get=Mock(return_value=response)))
+
+        logger = Mock()
+        assert expected_run_times("http://example.invalid/report.json", logger) is None
+        logger.warning.assert_called_once()

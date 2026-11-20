@@ -13,9 +13,13 @@
 # limitations under the License.
 
 from ducktape.tests.loader import TestLoader, LoaderException, _describe_json_violation, _requests_session
+from ducktape.tests.loader import load_historical_run_times
+from ducktape.tests.test import run_time_key
 
 import tests.ducktape_mock
 
+import enum
+import json
 import os
 import os.path
 import pytest
@@ -557,6 +561,61 @@ class CheckTestLoader(object):
         loader = TestLoader(self.SESSION_CONTEXT, logger=Mock(), subset=1, subsets=2, historical_report=report_url)
         tests = loader.load([file])
         assert len(tests) == 2
+
+    def check_load_historical_run_times(self):
+        """Check that run times are read per test from a report."""
+        report_url = "file://" + os.path.join(resources_dir(), "report.json")
+        module = "tests.loader.resources.loader_test_directory.test_b"
+
+        assert load_historical_run_times(report_url) == {
+            run_time_key(module, "TestB", "test_b", None): 10,
+            run_time_key(module, "TestBB", "test_bb_one", None): 5,
+            run_time_key(module, "TestBB", "bb_two_test", None): 1,
+        }
+
+    def check_load_historical_run_times_skips_tests_that_did_not_run(self):
+        """Check that ignored tests are left out, and that the longest run of a repeated test is kept."""
+        def result(function_name, run_time, **kwargs):
+            return dict(module_name="m", cls_name="C", function_name=function_name, injected_args={"x": 1},
+                        run_time_seconds=run_time, **kwargs)
+
+        report = {"results": [
+            result("ignored", 0.0, test_status="IGNORE"),
+            result("repeated", 3.5),
+            result("repeated", 7),
+            result("repeated", "2.0"),
+        ]}
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
+            json.dump(report, f)
+            f.flush()
+
+            assert load_historical_run_times("file://" + f.name) == {
+                run_time_key("m", "C", "repeated", {"x": 1}): 7}
+
+    def check_historical_run_time_found_whatever_the_test_id(self):
+        """Check that a test finds its run time in a report whose test_id was built differently.
+
+        A tool that combines reports may rebuild test_id from the arguments in the JSON, which are sorted by name
+        and hold an enum as its value.
+        """
+        class Storage(enum.IntEnum):
+            S3 = 1
+
+        injected_args = {"use_tls": False, "storage": Storage.S3, "acks": [1, "all"]}
+        report = {"results": [{
+            "test_id": "m.C.f.acks=.1.all.storage=1.use_tls=False",
+            "module_name": "m", "cls_name": "C", "function_name": "f",
+            "injected_args": json.loads(json.dumps(injected_args, sort_keys=True)),
+            "run_time_seconds": 12,
+        }]}
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
+            json.dump(report, f)
+            f.flush()
+            run_times = load_historical_run_times("file://" + f.name)
+
+        assert run_times[run_time_key("m", "C", "f", injected_args)] == 12
+        assert run_time_key("m", "C", "f", dict(injected_args, use_tls=True)) not in run_times
+        assert run_time_key("m", "C", "other", injected_args) not in run_times
 
     def check_loader_with_non_yml_file(self):
         """

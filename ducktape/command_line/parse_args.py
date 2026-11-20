@@ -75,8 +75,8 @@ def create_ducktape_parser():
                              "--subsets")
     parser.add_argument("--historical-report", action="store", type=str,
                         help="URL of a JSON report file containing stats from a previous test run. If specified, "
-                             "this will be used when creating subsets of tests to divide evenly by total run time "
-                             "instead of by number of tests.")
+                             "tests start from the longest to the shortest instead of from the largest cluster "
+                             "user to the smallest. Tests that the report has no run time for start first.")
     parser.add_argument("--skip-nodes-allocation", action="store_true", help="Use this flag to skip allocating "
                         "nodes for services. Can be used when running specific tests on a running platform")
     parser.add_argument("--sample", action="store", type=int,

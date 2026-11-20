@@ -2,15 +2,27 @@
   "results": [
     {
       "test_id": "tests.loader.resources.loader_test_directory.test_b.TestB.test_b",
-      "run_time_seconds": 10
+      "run_time_seconds": 10,
+      "module_name": "tests.loader.resources.loader_test_directory.test_b",
+      "cls_name": "TestB",
+      "function_name": "test_b",
+      "injected_args": null
     },
     {
       "test_id": "tests.loader.resources.loader_test_directory.test_b.TestBB.test_bb_one",
-      "run_time_seconds": 5
+      "run_time_seconds": 5,
+      "module_name": "tests.loader.resources.loader_test_directory.test_b",
+      "cls_name": "TestBB",
+      "function_name": "test_bb_one",
+      "injected_args": null
     },
     {
       "test_id": "tests.loader.resources.loader_test_directory.test_b.TestBB.bb_two_test",
-      "run_time_seconds": 1
+      "run_time_seconds": 1,
+      "module_name": "tests.loader.resources.loader_test_directory.test_b",
+      "cls_name": "TestBB",
+      "function_name": "bb_two_test",
+      "injected_args": null
     }
   ]
 }
